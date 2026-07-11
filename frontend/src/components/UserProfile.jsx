@@ -1,25 +1,30 @@
 import React, { useState } from "react";
 import { User, Award, Shield, CheckCircle, Mail, Phone, MapPin, Briefcase, Settings, Star, TrendingUp } from "lucide-react";
 
-export default function UserProfile() {
+export default function UserProfile({ currentUser }) {
+  const roleLabel = currentUser?.role === "admin" ? "System Administrator" : "Relationship Manager";
+
   const [rmSettings, setRmSettings] = useState({
     defaultChannel: "WhatsApp",
     speed: "Normal",
     notifications: true,
-    signature: "Best regards, Sarah Connor - Relationship Manager"
+    signature: `Best regards, ${currentUser?.name || "Relationship Manager"} - ${roleLabel}`
   });
 
+  const getInitials = (name) => {
+    if (!name) return "US";
+    return name.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
+  };
+
   const rmProfile = {
-    name: "Sarah Connor",
-    role: "Relationship Manager",
-    employeeId: "RM-99812",
-    region: "Northeast Region (NYC Head Office)",
-    email: "sconnor@observebank.com",
-    phone: "+1 (555) 012-9981",
-    portfolioSize: "$4.25M",
-    activeAccounts: 48,
-    joinedDate: "October 2023",
-    conversionRate: "82.4%"
+    name: currentUser?.name || "Unknown User",
+    role: roleLabel,
+    employeeId: currentUser?.id || "N/A",
+    region: currentUser?.region || "Unassigned Region",
+    email: currentUser?.email || "—",
+    phone: currentUser?.phone || "—",
+    portfolioSize: currentUser?.portfolioSize || "$0.00",
+    conversionRate: currentUser?.conversionRate || "0.0%"
   };
 
   const targets = [
@@ -49,7 +54,7 @@ export default function UserProfile() {
           color: "#fff",
           border: "3px solid rgba(255,255,255,0.1)"
         }}>
-          SC
+          {getInitials(rmProfile.name)}
         </div>
         
         <div>

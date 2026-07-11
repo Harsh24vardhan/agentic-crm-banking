@@ -1,7 +1,7 @@
 import { API_BASE_URL } from "../config.js";
 import React, { useState, useEffect } from "react";
 import { mockCustomers } from "../agent/mockDatabase";
-import { MessageSquare, PhoneCall, Send, Clipboard, CheckCircle, HelpCircle, Mail } from "lucide-react";
+import { MessageSquare, PhoneCall, Send, Clipboard, CheckCircle, HelpCircle, Mail, RefreshCw, ExternalLink } from "lucide-react";
 import { generate_personalized_message } from "../agent/tools";
 
 export default function LeadsManager({ leads, activeProduct, setActiveTab, setInitialQuery }) {
@@ -69,6 +69,22 @@ export default function LeadsManager({ leads, activeProduct, setActiveTab, setIn
 
   const handleDispatch = () => {
     setShowDispatchModal(true);
+  };
+
+  const getWhatsAppLink = (phone, message) => {
+    const digits = (phone || "").replace(/[^0-9]/g, "");
+    return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+  };
+
+  const openInWhatsApp = () => {
+    if (!customerProfile) return;
+    window.open(getWhatsAppLink(customerProfile.phone, editableMsg), "_blank", "noopener,noreferrer");
+  };
+
+  const openInEmailClient = () => {
+    if (!customerProfile) return;
+    const subject = encodeURIComponent(`${selectedLead?.productType || "Offer"} - Personalized Update`);
+    window.location.href = `mailto:${customerProfile.email}?subject=${subject}&body=${encodeURIComponent(editableMsg)}`;
   };
 
   const confirmDispatch = () => {
@@ -324,7 +340,7 @@ export default function LeadsManager({ leads, activeProduct, setActiveTab, setIn
         )}
       </div>
 
-      {/* MOCK DISPATCH PREVIEW MODAL */}
+      {/* DISPATCH PREVIEW MODAL */}
       {showDispatchModal && selectedLead && customerProfile && (
         <div style={{
           position: "fixed",
@@ -335,19 +351,18 @@ export default function LeadsManager({ leads, activeProduct, setActiveTab, setIn
           backgroundColor: "rgba(0, 0, 0, 0.75)",
           display: "flex",
           alignItems: "center",
-          justify: "center",
+          justifyContent: "center",
           zIndex: 1000,
           backdropFilter: "blur(4px)"
         }}>
           <div className="glass-card" style={{
             width: "480px",
-            margin: "auto",
             display: "flex",
             flexDirection: "column",
             gap: "1.25rem",
             background: "var(--bg-secondary)",
             border: "1px solid var(--color-primary-glow)",
-            boxShadow: "0 0 30px rgba(0, 240, 255, 0.1)"
+            boxShadow: "0 0 40px rgba(0, 240, 255, 0.12)"
           }}>
             {isDispatching ? (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "2rem 1rem", gap: "1.25rem", textAlign: "center" }}>
@@ -376,50 +391,74 @@ export default function LeadsManager({ leads, activeProduct, setActiveTab, setIn
               </div>
             ) : (
               <>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color)", paddingBottom: "0.75rem" }}>
-                  <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1.1rem" }}>
-                    {outreachChannel === "WhatsApp" ? "WhatsApp Dispatch Confirmation" : "SMTP Email Dispatch Confirmation"}
-                  </h3>
-                  <span style={{ fontSize: "0.75rem", color: "var(--color-primary)", background: "rgba(0,240,255,0.08)", padding: "0.2rem 0.5rem", borderRadius: "4px" }}>
-                    API Simulator
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color)", paddingBottom: "0.9rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
+                    <div style={{
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "10px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: outreachChannel === "WhatsApp" ? "rgba(37, 211, 102, 0.12)" : "var(--color-primary-glow)",
+                      color: outreachChannel === "WhatsApp" ? "#25d366" : "var(--color-primary)"
+                    }}>
+                      {outreachChannel === "WhatsApp" ? <Send size={17} /> : <Mail size={17} />}
+                    </div>
+                    <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1.05rem" }}>
+                      {outreachChannel === "WhatsApp" ? "WhatsApp Dispatch" : "Email Dispatch"}
+                    </h3>
+                  </div>
+                  <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", background: "rgba(255,255,255,0.04)", border: "1px solid var(--border-color)", padding: "0.2rem 0.55rem", borderRadius: "20px" }}>
+                    CRM Simulator
                   </span>
                 </div>
-                
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
                   <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
-                    <strong>Recipient:</strong> {customerProfile.name} ({outreachChannel === "WhatsApp" ? customerProfile.phone : customerProfile.email})
+                    <strong style={{ color: "var(--text-primary)" }}>Recipient:</strong> {customerProfile.name} · {outreachChannel === "WhatsApp" ? customerProfile.phone : customerProfile.email}
                   </div>
                   <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
-                    <strong>Product:</strong> {selectedLead.productType}
+                    <strong style={{ color: "var(--text-primary)" }}>Product:</strong> {selectedLead.productType}
                   </div>
                 </div>
 
                 <div style={{
-                  background: outreachChannel === "WhatsApp" ? "#075e54" : "rgba(255,255,255,0.04)",
+                  background: outreachChannel === "WhatsApp" ? "#0b141a" : "rgba(255,255,255,0.03)",
                   padding: "1rem",
-                  borderRadius: "10px",
-                  color: "#fff",
+                  borderRadius: "12px",
                   fontSize: "0.85rem",
-                  lineHeight: "1.4",
-                  border: outreachChannel === "WhatsApp" ? "1px solid #128c7e" : "1px solid var(--border-color)",
-                  position: "relative",
-                  maxHeight: "180px",
-                  overflowY: "auto",
-                  whiteSpace: "pre-wrap"
+                  lineHeight: "1.5",
+                  border: outreachChannel === "WhatsApp" ? "1px solid rgba(37, 211, 102, 0.2)" : "1px solid var(--border-color)"
                 }}>
-                  <div style={{ fontSize: "0.75rem", fontWeight: "bold", color: outreachChannel === "WhatsApp" ? "#ece5dd" : "var(--text-secondary)", marginBottom: "0.25rem" }}>
-                    {outreachChannel === "WhatsApp" ? "RM Chat Dispatch:" : "Email MIME Preview:"}
+                  <div style={{ fontSize: "0.7rem", fontWeight: "bold", letterSpacing: "0.03em", textTransform: "uppercase", color: outreachChannel === "WhatsApp" ? "#25d366" : "var(--text-secondary)", marginBottom: "0.6rem" }}>
+                    {outreachChannel === "WhatsApp" ? "Message Preview" : "Email Body Preview"}
                   </div>
-                  {editableMsg}
+                  <div style={{
+                    background: outreachChannel === "WhatsApp" ? "#005c4b" : "transparent",
+                    color: outreachChannel === "WhatsApp" ? "#e9edef" : "var(--text-primary)",
+                    padding: outreachChannel === "WhatsApp" ? "0.65rem 0.85rem" : 0,
+                    borderRadius: outreachChannel === "WhatsApp" ? "10px 10px 2px 10px" : 0,
+                    maxHeight: "160px",
+                    overflowY: "auto",
+                    whiteSpace: "pre-wrap"
+                  }}>
+                    {editableMsg}
+                  </div>
                 </div>
 
-                <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", textAlign: "center" }}>
-                  Confirming this dispatch will trigger the mock banking communications system to send this payload.
-                </p>
-
-                <div style={{ display: "flex", gap: "1rem", justifyContent: "flex-end", marginTop: "0.5rem" }}>
+                <div style={{ display: "flex", gap: "0.65rem", justifyContent: "flex-end", flexWrap: "wrap" }}>
                   <button id="dispatch-cancel-btn" className="btn btn-secondary" style={{ padding: "0.5rem 1rem", fontSize: "0.8rem" }} onClick={() => setShowDispatchModal(false)}>
                     Cancel
+                  </button>
+                  <button
+                    id="dispatch-open-external-btn"
+                    className="btn btn-secondary"
+                    style={{ padding: "0.5rem 1rem", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.4rem" }}
+                    onClick={outreachChannel === "WhatsApp" ? openInWhatsApp : openInEmailClient}
+                  >
+                    <ExternalLink size={13} />
+                    <span>{outreachChannel === "WhatsApp" ? "Open in WhatsApp" : "Open in Email App"}</span>
                   </button>
                   <button id="dispatch-confirm-btn" className="btn btn-primary" style={{ padding: "0.5rem 1.25rem", fontSize: "0.8rem" }} onClick={confirmDispatch}>
                     Confirm & Send

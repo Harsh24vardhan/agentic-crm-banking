@@ -152,7 +152,7 @@ export default function App() {
           />
         );
       case "profile":
-        return <UserProfile />;
+        return <UserProfile currentUser={currentUser} />;
       default:
         return (
           <HomePage
