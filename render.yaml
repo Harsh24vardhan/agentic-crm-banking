@@ -2,14 +2,14 @@ services:
   # Node.js backend Web Service
   - type: web
     name: agentic-crm-backend
-    env: node
+    runtime: node
     plan: free
     rootDir: backend
     buildCommand: npm install && npm run seed
     startCommand: npm start
     envVars:
       - key: PORT
-        value: 5000
+        value: 10000
       - key: DATABASE_URL
         fromDatabase:
           name: agentic-crm-db
@@ -53,4 +53,4 @@ services:
 databases:
   - name: agentic-crm-db
     plan: free
-    postgresDatabaseName: observebank
+    databaseName: observebank
