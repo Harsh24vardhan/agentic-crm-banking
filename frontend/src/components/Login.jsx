@@ -1,13 +1,9 @@
 import { API_BASE_URL } from "../config.js";
 import React, { useState } from "react";
-import { Lock, User, AlertCircle, Eye, EyeOff, ShieldCheck, Zap } from "lucide-react";
+import { Lock, User, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { mockUsers } from "../agent/mockDatabase.js";
 import BrandLogo from "./BrandLogo";
-
-const DEMO_LOGINS = [
-  { label: "Admin Console", username: "admin", password: "password123", icon: ShieldCheck },
-  { label: "Sarah Connor (RM)", username: "sarah", password: "password123", icon: Zap }
-];
+import { useToast } from "../context/ToastContext.jsx";
 
 export default function Login({ onLoginSuccess }) {
   const [username, setUsername] = useState("");
@@ -15,6 +11,7 @@ export default function Login({ onLoginSuccess }) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const { showSuccess, showError } = useToast();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -29,15 +26,18 @@ export default function Login({ onLoginSuccess }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: username.trim(), password })
       });
-      
+
       if (res.ok) {
         const result = await res.json();
         if (result.success) {
           localStorage.setItem("observe_user", JSON.stringify(result.data));
+          showSuccess(`Welcome back, ${result.data.name}!`);
           onLoginSuccess(result.data);
           return;
         } else {
-          setError(result.error || "Authentication failed.");
+          const msg = result.error || "Authentication failed.";
+          setError(msg);
+          showError(msg);
           setLoading(false);
           return;
         }
@@ -61,17 +61,14 @@ export default function Login({ onLoginSuccess }) {
         conversionRate: user.conversionRate
       };
       localStorage.setItem("observe_user", JSON.stringify(userData));
+      showSuccess(`Welcome back, ${userData.name}! (offline mode)`);
       onLoginSuccess(userData);
     } else {
-      setError("Invalid username or password (offline mode).");
+      const msg = "Invalid username or password (offline mode).";
+      setError(msg);
+      showError(msg);
     }
     setLoading(false);
-  };
-
-  const fillDemoCredentials = (demo) => {
-    setUsername(demo.username);
-    setPassword(demo.password);
-    setError("");
   };
 
   return (
@@ -88,7 +85,7 @@ export default function Login({ onLoginSuccess }) {
         {/* Header */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.6rem", marginBottom: "1.75rem", textAlign: "center" }}>
           <BrandLogo size={56} />
-          <h2 style={{ fontFamily: "var(--font-display)", fontSize: "1.45rem", fontWeight: "800", background: "linear-gradient(135deg, #fff, var(--color-primary))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: "1.45rem", fontWeight: "800", background: "linear-gradient(135deg, var(--text-primary), var(--color-primary))", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>
             Agentic AI System Portal
           </h2>
           <p style={{ color: "var(--text-secondary)", fontSize: "0.75rem" }}>
@@ -191,45 +188,6 @@ export default function Login({ onLoginSuccess }) {
             {loading ? "Authenticating..." : "Authenticate Access"}
           </button>
         </form>
-
-        {/* Helper Credentials */}
-        <div style={{
-          marginTop: "1.5rem",
-          paddingTop: "1.25rem",
-          borderTop: "1px solid var(--border-color)"
-        }}>
-          <div style={{ fontWeight: 600, color: "var(--text-secondary)", fontSize: "0.75rem", marginBottom: "0.6rem" }}>
-            Quick Demo Access
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            {DEMO_LOGINS.map((demo) => {
-              const Icon = demo.icon;
-              return (
-                <button
-                  key={demo.username}
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => fillDemoCredentials(demo)}
-                  disabled={loading}
-                  style={{
-                    justifyContent: "space-between",
-                    padding: "0.55rem 0.8rem",
-                    fontSize: "0.78rem",
-                    fontWeight: 500
-                  }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                    <Icon size={13} style={{ color: "var(--color-primary)" }} />
-                    <span>{demo.label}</span>
-                  </span>
-                  <span style={{ color: "var(--text-muted)", fontFamily: "monospace", fontSize: "0.72rem" }}>
-                    {demo.username} / {demo.password}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
       </div>
     </div>
   );

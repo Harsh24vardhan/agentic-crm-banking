@@ -3,8 +3,10 @@ import React, { useState, useEffect } from "react";
 import { mockCustomers } from "../agent/mockDatabase";
 import { MessageSquare, Send, Clipboard, CheckCircle, HelpCircle, Mail, RefreshCw, ExternalLink } from "lucide-react";
 import { generate_personalized_message } from "../agent/tools";
+import { useToast } from "../context/ToastContext.jsx";
 
 export default function LeadsManager({ leads, activeProduct, setActiveTab, setInitialQuery }) {
+  const { showSuccess, showError } = useToast();
   const [selectedLeadId, setSelectedLeadId] = useState(null);
   const [editableMsg, setEditableMsg] = useState("");
   const [showDispatchModal, setShowDispatchModal] = useState(false);
@@ -64,6 +66,7 @@ export default function LeadsManager({ leads, activeProduct, setActiveTab, setIn
   const handleCopy = () => {
     navigator.clipboard.writeText(editableMsg);
     setCopied(true);
+    showSuccess("Message copied to clipboard.");
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -77,14 +80,22 @@ export default function LeadsManager({ leads, activeProduct, setActiveTab, setIn
   };
 
   const openInWhatsApp = () => {
-    if (!customerProfile) return;
+    if (!customerProfile?.phone) {
+      showError("This customer has no phone number on file.");
+      return;
+    }
     window.open(getWhatsAppLink(customerProfile.phone, editableMsg), "_blank", "noopener,noreferrer");
+    showSuccess(`Opened WhatsApp for ${customerProfile.name}.`);
   };
 
   const openInEmailClient = () => {
-    if (!customerProfile) return;
+    if (!customerProfile?.email) {
+      showError("This customer has no email address on file.");
+      return;
+    }
     const subject = encodeURIComponent(`${selectedLead?.productType || "Offer"} - Personalized Update`);
     window.location.href = `mailto:${customerProfile.email}?subject=${subject}&body=${encodeURIComponent(editableMsg)}`;
+    showSuccess(`Opened email client for ${customerProfile.name}.`);
   };
 
   const confirmDispatch = () => {
@@ -109,6 +120,11 @@ export default function LeadsManager({ leads, activeProduct, setActiveTab, setIn
       if (selectedLeadId) {
         setContactedStatus((prev) => ({ ...prev, [selectedLeadId]: true }));
       }
+      showSuccess(
+        outreachChannel === "WhatsApp"
+          ? `WhatsApp outreach sent to ${customerProfile?.name || "customer"}.`
+          : `Email dispatched to ${customerProfile?.name || "customer"}.`
+      );
     }, 2400);
   };
 
@@ -143,6 +159,7 @@ export default function LeadsManager({ leads, activeProduct, setActiveTab, setIn
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    showSuccess(`Exported ${leads.length} lead${leads.length === 1 ? "" : "s"} to CSV.`);
   };
 
   const getScoreClass = (score) => {

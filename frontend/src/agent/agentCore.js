@@ -21,7 +21,7 @@ function parseQueryIntent(query) {
   const filters = {};
   
   // Min Balance parsing (e.g. "balance > 50000", "balance > $50k", "balance > 100k")
-  const balanceMatch = q.match(/balance\s*(?:>|>=|above|over|more than)?\s*\$?(\d+)(k)?/i);
+  const balanceMatch = q.match(/balance\s*(?:>|>=|above|over|more than)?\s*[$₹]?(\d+)(k)?/i);
   if (balanceMatch) {
     let amt = parseInt(balanceMatch[1]);
     if (balanceMatch[2]) amt *= 1000;
@@ -35,7 +35,7 @@ function parseQueryIntent(query) {
   }
 
   // Income parsing (e.g. "income > 100000", "income > $80k")
-  const incomeMatch = q.match(/income\s*(?:>|>=|above|over)?\s*\$?(\d+)(k)?/i);
+  const incomeMatch = q.match(/income\s*(?:>|>=|above|over)?\s*[$₹]?(\d+)(k)?/i);
   if (incomeMatch) {
     let amt = parseInt(incomeMatch[1]);
     if (incomeMatch[2]) amt *= 1000;

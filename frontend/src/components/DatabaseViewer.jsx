@@ -1,9 +1,11 @@
 import { API_BASE_URL } from "../config.js";
 import React, { useState, useEffect } from "react";
 import { mockCustomers, mockTransactions } from "../agent/mockDatabase.js";
-import { Search, UserPlus, Check, X } from "lucide-react";
+import { Search, UserPlus, X } from "lucide-react";
+import { useToast } from "../context/ToastContext.jsx";
 
 export default function DatabaseViewer({ setActiveTab, setInitialQuery }) {
+  const { showSuccess, showError } = useToast();
   const [activeSubTab, setActiveSubTab] = useState("customers");
   const [searchTerm, setSearchTerm] = useState("");
   const [customers, setCustomers] = useState(mockCustomers);
@@ -34,14 +36,6 @@ export default function DatabaseViewer({ setActiveTab, setInitialQuery }) {
     customerId: "", description: "", amount: "",
     type: "withdrawal", category: "Shopping"
   });
-
-  // Notification Toast State
-  const [toast, setToast] = useState(null);
-
-  const showToast = (message) => {
-    setToast(message);
-    setTimeout(() => setToast(null), 3000);
-  };
 
   const handleAnalyze = (name) => {
     setInitialQuery(`Find campaigns and generate outreach for customer ${name}`);
@@ -100,11 +94,13 @@ export default function DatabaseViewer({ setActiveTab, setInitialQuery }) {
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
-          showToast(`Successfully added customer ${payload.name}`);
+          showSuccess(`Successfully added customer ${payload.name}`);
           refreshData();
           setShowAddCustomer(false);
           return;
         }
+        showError(data.error || `Failed to add customer ${payload.name}.`);
+        return;
       }
     } catch (err) {
       console.error(err);
@@ -117,7 +113,7 @@ export default function DatabaseViewer({ setActiveTab, setInitialQuery }) {
     };
     setCustomers(prev => [...prev, localNewCust]);
     mockCustomers.push(localNewCust);
-    showToast(`Offline Mode: Added customer ${payload.name}`);
+    showSuccess(`Offline Mode: Added customer ${payload.name}`);
     setShowAddCustomer(false);
   };
 
@@ -162,11 +158,13 @@ export default function DatabaseViewer({ setActiveTab, setInitialQuery }) {
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
-          showToast(`Successfully updated profile for ${payload.name}`);
+          showSuccess(`Successfully updated profile for ${payload.name}`);
           refreshData();
           setShowEditCustomer(false);
           return;
         }
+        showError(data.error || `Failed to update profile for ${payload.name}.`);
+        return;
       }
     } catch (err) {
       console.error(err);
@@ -178,7 +176,7 @@ export default function DatabaseViewer({ setActiveTab, setInitialQuery }) {
     if (mockIdx !== -1) {
       mockCustomers[mockIdx] = { ...mockCustomers[mockIdx], ...payload };
     }
-    showToast(`Offline Mode: Updated profile for ${payload.name}`);
+    showSuccess(`Offline Mode: Updated profile for ${payload.name}`);
     setShowEditCustomer(false);
   };
 
@@ -210,11 +208,13 @@ export default function DatabaseViewer({ setActiveTab, setInitialQuery }) {
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
-          showToast(`Logged transaction of $${payload.amount}`);
+          showSuccess(`Logged transaction of ₹${payload.amount}`);
           refreshData();
           setShowAddTx(false);
           return;
         }
+        showError(data.error || "Failed to log transaction.");
+        return;
       }
     } catch (err) {
       console.error(err);
@@ -227,7 +227,7 @@ export default function DatabaseViewer({ setActiveTab, setInitialQuery }) {
     };
     setTransactions(prev => [localNewTx, ...prev]);
     mockTransactions.push(localNewTx);
-    showToast(`Offline Mode: Logged transaction of $${payload.amount}`);
+    showSuccess(`Offline Mode: Logged transaction of ₹${payload.amount}`);
     setShowAddTx(false);
   };
 
@@ -257,14 +257,6 @@ export default function DatabaseViewer({ setActiveTab, setInitialQuery }) {
 
   return (
     <div className="glass-card" style={{ height: "calc(100vh - 100px)", display: "flex", flexDirection: "column" }}>
-      {/* Toast Alert */}
-      {toast && (
-        <div className="toast">
-          <Check size={16} style={{ color: "var(--color-success)" }} />
-          <span>{toast}</span>
-        </div>
-      )}
-
       <div className="card-header" style={{ border: "none", marginBottom: "0.5rem" }}>
         <div>
           <h2>CRM Core Databases</h2>
@@ -363,7 +355,7 @@ export default function DatabaseViewer({ setActiveTab, setInitialQuery }) {
                         {cust.creditScore}
                       </span>
                     </td>
-                    <td>${cust.totalBalance.toLocaleString()}</td>
+                    <td>₹{cust.totalBalance.toLocaleString()}</td>
                     <td>
                       <span className={getSegmentBadgeClass(cust.segment)}>{cust.segment}</span>
                     </td>
@@ -447,7 +439,7 @@ export default function DatabaseViewer({ setActiveTab, setInitialQuery }) {
                       </td>
                       <td style={{ color: "var(--text-secondary)" }}>{tx.description}</td>
                       <td style={{ fontWeight: 600, color: tx.type === "deposit" ? "var(--color-success)" : "var(--text-primary)" }}>
-                        {tx.type === "deposit" ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
+                        {tx.type === "deposit" ? "+" : "-"}₹{Math.abs(tx.amount).toFixed(2)}
                       </td>
                       <td>
                         <span style={{ fontSize: "0.75rem", color: tx.type === "deposit" ? "var(--color-success)" : "var(--text-muted)" }}>
@@ -498,7 +490,7 @@ export default function DatabaseViewer({ setActiveTab, setInitialQuery }) {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
                 <div className="form-group">
-                  <label>Annual Income ($)</label>
+                  <label>Annual Income (₹)</label>
                   <input type="number" className="form-control" required value={addForm.annualIncome} onChange={e => setAddForm({...addForm, annualIncome: e.target.value})} />
                 </div>
                 <div className="form-group">
@@ -508,7 +500,7 @@ export default function DatabaseViewer({ setActiveTab, setInitialQuery }) {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
                 <div className="form-group">
-                  <label>Total Balance ($)</label>
+                  <label>Total Balance (₹)</label>
                   <input type="number" className="form-control" required value={addForm.totalBalance} onChange={e => setAddForm({...addForm, totalBalance: e.target.value})} />
                 </div>
                 <div className="form-group">
@@ -582,7 +574,7 @@ export default function DatabaseViewer({ setActiveTab, setInitialQuery }) {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
                 <div className="form-group">
-                  <label>Annual Income ($)</label>
+                  <label>Annual Income (₹)</label>
                   <input type="number" className="form-control" required value={editForm.annualIncome} onChange={e => setEditForm({...editForm, annualIncome: e.target.value})} />
                 </div>
                 <div className="form-group">
@@ -592,7 +584,7 @@ export default function DatabaseViewer({ setActiveTab, setInitialQuery }) {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
                 <div className="form-group">
-                  <label>Total Balance ($)</label>
+                  <label>Total Balance (₹)</label>
                   <input type="number" className="form-control" required value={editForm.totalBalance} onChange={e => setEditForm({...editForm, totalBalance: e.target.value})} />
                 </div>
                 <div className="form-group">
@@ -646,7 +638,7 @@ export default function DatabaseViewer({ setActiveTab, setInitialQuery }) {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
                 <div className="form-group">
-                  <label>Amount ($)</label>
+                  <label>Amount (₹)</label>
                   <input type="number" step="0.01" className="form-control" required placeholder="e.g. 85.50" value={txForm.amount} onChange={e => setTxForm({...txForm, amount: e.target.value})} />
                 </div>
                 <div className="form-group">

@@ -63,7 +63,7 @@ export default function HomePage({ setActiveTab, setInitialQuery }) {
     },
     {
       label: "Scan HNW Wealth Advisory",
-      query: "Find high net-worth individuals with balances over $100k for wealth advisory campaigns and generate outreach"
+      query: "Find high net-worth individuals with balances over ₹100k for wealth advisory campaigns and generate outreach"
     }
   ];
 

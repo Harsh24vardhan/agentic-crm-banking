@@ -414,6 +414,6 @@ export const mockTransactions = [
 ];
 
 export const mockUsers = [
-  { id: "USR001", name: "System Administrator", username: "admin", password: "password123", role: "admin", region: "All Regions", email: "admin@observebank.com", phone: "+1 (555) 010-0000", portfolioSize: "$0.00", conversionRate: "0.0%" },
-  { id: "USR002", name: "Sarah Connor", username: "sarah", password: "password123", role: "rm", region: "Northeast Region (NYC Head Office)", email: "sconnor@observebank.com", phone: "+1 (555) 012-9981", portfolioSize: "$4.25M", conversionRate: "82.4%" }
+  { id: "USR001", name: "System Administrator", username: "admin", password: "password123", role: "admin", region: "All Regions", email: "admin@observebank.com", phone: "+1 (555) 010-0000", portfolioSize: "₹0.00", conversionRate: "0.0%" },
+  { id: "USR002", name: "Sarah Connor", username: "sarah", password: "password123", role: "rm", region: "Northeast Region (NYC Head Office)", email: "sconnor@observebank.com", phone: "+1 (555) 012-9981", portfolioSize: "₹4.25M", conversionRate: "82.4%" }
 ];

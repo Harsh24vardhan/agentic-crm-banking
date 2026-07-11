@@ -197,8 +197,9 @@ body {
   font-size: 1.4rem;
   font-weight: 700;
   letter-spacing: -0.5px;
-  background: linear-gradient(135deg, #ffffff 0%, var(--color-primary) 100%);
+  background: linear-gradient(135deg, var(--text-primary) 0%, var(--color-primary) 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
@@ -1173,21 +1174,57 @@ body {
 }
 
 /* Toast Notifications */
-.toast {
+.toast-stack {
   position: fixed;
   bottom: 24px;
   right: 24px;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.6rem;
+  z-index: 1100;
+  pointer-events: none;
+}
+
+.toast {
   background: #0f172a;
   border: 1px solid var(--color-success);
   color: var(--text-primary);
-  padding: 0.85rem 1.25rem;
+  padding: 0.85rem 1rem 0.85rem 1.25rem;
   border-radius: 10px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.5), 0 0 10px rgba(16, 185, 129, 0.2);
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  z-index: 1100;
+  min-width: 260px;
+  max-width: 380px;
+  pointer-events: auto;
   animation: slideLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toast-error {
+  border-color: var(--color-danger);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5), 0 0 10px rgba(239, 68, 68, 0.2);
+}
+
+.toast span {
+  flex: 1;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.toast-dismiss {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 0.15rem;
+  flex-shrink: 0;
+}
+
+.toast-dismiss:hover {
+  color: var(--text-primary);
 }
 
 /* SVG Chart Styles */

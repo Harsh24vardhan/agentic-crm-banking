@@ -461,7 +461,7 @@ export async function addRmDb(rmData) {
       ...rmData,
       id: `USR${String(mockUsers.length + 1).padStart(3, "0")}`,
       role: "rm",
-      portfolioSize: rmData.portfolioSize || "$0.00",
+      portfolioSize: rmData.portfolioSize || "₹0.00",
       conversionRate: rmData.conversionRate || "0.0%"
     };
     mockUsers.push(newRm);
@@ -484,7 +484,7 @@ export async function addRmDb(rmData) {
       rmData.region || "General",
       rmData.email,
       rmData.phone,
-      rmData.portfolioSize || "$0.00",
+      rmData.portfolioSize || "₹0.00",
       rmData.conversionRate || "0.0%"
     ]);
 

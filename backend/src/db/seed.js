@@ -75,7 +75,7 @@ async function runSeed() {
         region VARCHAR(100),
         email VARCHAR(100),
         phone VARCHAR(30),
-        portfolio_size VARCHAR(30) DEFAULT '$0.00',
+        portfolio_size VARCHAR(30) DEFAULT '₹0.00',
         conversion_rate VARCHAR(30) DEFAULT '0.0%'
       )
     `);
@@ -121,8 +121,8 @@ async function runSeed() {
     await dbClient.query(`
       INSERT INTO users (id, name, username, password, role, region, email, phone, portfolio_size, conversion_rate)
       VALUES 
-      ('USR001', 'System Administrator', 'admin', 'password123', 'admin', 'All Regions', 'admin@observebank.com', '+1 (555) 010-0000', '$0.00', '0.0%'),
-      ('USR002', 'Sarah Connor', 'sarah', 'password123', 'rm', 'Northeast Region (NYC Head Office)', 'sconnor@observebank.com', '+1 (555) 012-9981', '$4.25M', '82.4%')
+      ('USR001', 'System Administrator', 'admin', 'password123', 'admin', 'All Regions', 'admin@observebank.com', '+1 (555) 010-0000', '₹0.00', '0.0%'),
+      ('USR002', 'Sarah Connor', 'sarah', 'password123', 'rm', 'Northeast Region (NYC Head Office)', 'sconnor@observebank.com', '+1 (555) 012-9981', '₹4.25M', '82.4%')
     `);
 
     // 8. Insert customers

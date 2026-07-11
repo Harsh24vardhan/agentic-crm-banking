@@ -89,10 +89,10 @@ export function calculate_conversion_probability(customerId, productType) {
     // Income Factors
     if (annualIncome > 120000) {
       score += 25;
-      factors.push("High income ($" + annualIncome.toLocaleString() + ") increases debt serviceability (+25%)");
+      factors.push("High income (₹" + annualIncome.toLocaleString() + ") increases debt serviceability (+25%)");
     } else if (annualIncome > 80000) {
       score += 15;
-      factors.push("Healthy income ($" + annualIncome.toLocaleString() + ") supports repayment capacity (+15%)");
+      factors.push("Healthy income (₹" + annualIncome.toLocaleString() + ") supports repayment capacity (+15%)");
     } else if (annualIncome < 40000) {
       score -= 20;
       factors.push("Low income levels reduce borrow capability (-20%)");
@@ -188,10 +188,10 @@ export function calculate_conversion_probability(customerId, productType) {
     // Assets size
     if (totalBalance >= 300000) {
       score += 50;
-      factors.push("Ultra High Net Worth client with balance of $" + totalBalance.toLocaleString() + " (+50%)");
+      factors.push("Ultra High Net Worth client with balance of ₹" + totalBalance.toLocaleString() + " (+50%)");
     } else if (totalBalance >= 100000) {
       score += 35;
-      factors.push("High Net Worth client with balance of $" + totalBalance.toLocaleString() + " (+35%)");
+      factors.push("High Net Worth client with balance of ₹" + totalBalance.toLocaleString() + " (+35%)");
     } else if (totalBalance < 20000) {
       score -= 40;
       factors.push("Insufficient assets under management to qualify for personal advisory (-40%)");
@@ -264,7 +264,7 @@ export function generate_personalized_message(customerId, productType, channel =
       } else if (customer.notes.toLowerCase().includes("dental")) {
         message = `Hello Dr. ${firstName}, hope your week is off to a great start! 🏥 We've observed your dental practice's excellent transaction performance. If you are considering upgrading equipment or expanding the office this quarter, we have pre-qualified you for our Professional Practice Expansion Loan at a VIP rate. Let me know if you would like me to text over a quick quote or set up a 5-minute call to discuss. - Your Relationship Manager`;
       } else {
-        message = `Hello ${firstName}, this is your Relationship Manager. We hope you're doing well! 💼 Based on your strong financial profile with us, you are pre-approved for a personal loan of up to $50,000 at a competitive rate of 6.2% APR, with flexible repayment terms. It takes less than 5 minutes to set up. Please let me know if you'd like to check the details or have a quick call.`;
+        message = `Hello ${firstName}, this is your Relationship Manager. We hope you're doing well! 💼 Based on your strong financial profile with us, you are pre-approved for a personal loan of up to ₹50,000 at a competitive rate of 6.2% APR, with flexible repayment terms. It takes less than 5 minutes to set up. Please let me know if you'd like to check the details or have a quick call.`;
       }
     } else if (productType === "Travel Elite Credit Card") {
       const travelNotes = customer.notes.toLowerCase();
@@ -285,7 +285,7 @@ export function generate_personalized_message(customerId, productType, channel =
   } else {
     // Email channel
     if (productType === "Personal Loan") {
-      message = `Subject: Pre-Approved Liquidity Offer: Special 5.9% APR for ${customer.name}\n\nDear ${firstName},\n\nWe appreciate your continued partnership with us. Based on your stellar financial profile, we have pre-approved you for a personal liquidity line of up to $50,000 at a preferred rate of 5.9% APR.\n\nKey features:\n- No application fees\n- Funds disbursed in under 24 hours\n- Flexible terms up to 60 months\n\nIf you have any upcoming personal or business expansions, this pre-approved facility is fully available. Please reply to this email or call me at my direct office number to set it up.\n\nBest regards,\nYour Relationship Manager`;
+      message = `Subject: Pre-Approved Liquidity Offer: Special 5.9% APR for ${customer.name}\n\nDear ${firstName},\n\nWe appreciate your continued partnership with us. Based on your stellar financial profile, we have pre-approved you for a personal liquidity line of up to ₹50,000 at a preferred rate of 5.9% APR.\n\nKey features:\n- No application fees\n- Funds disbursed in under 24 hours\n- Flexible terms up to 60 months\n\nIf you have any upcoming personal or business expansions, this pre-approved facility is fully available. Please reply to this email or call me at my direct office number to set it up.\n\nBest regards,\nYour Relationship Manager`;
     } else {
       message = `Subject: Tailored Investment Review for ${customer.name}\n\nDear ${firstName},\n\nI hope this email finds you well. As part of our priority banking services, we regularly review accounts that hold significant cash reserves to ensure they are optimized for growth and tax efficiency.\n\nWe would like to invite you to a complimentary wealth advisory session with our Senior Portfolio Manager. We have options suited for your risk profile that can help put your savings to work.\n\nPlease let me know if you have 15 minutes to spare this week for a phone or video call.\n\nSincerely,\nYour Priority Banking Team`;
     }

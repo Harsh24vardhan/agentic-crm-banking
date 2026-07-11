@@ -2,8 +2,10 @@ import { API_BASE_URL } from "../config.js";
 import React, { useState, useEffect } from "react";
 import { Send, RefreshCw, Terminal, Search, UserCheck, BrainCircuit, Wrench, Eye } from "lucide-react";
 import { runAgent } from "../agent/agentCore";
+import { useToast } from "../context/ToastContext.jsx";
 
 export default function AgentConsole({ onLeadsGenerated, setTab, initialQuery, setInitialQuery }) {
+  const { showSuccess, showError } = useToast();
   const [query, setQuery] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const [speed, setSpeed] = useState(1500); // ms per step
@@ -23,7 +25,7 @@ export default function AgentConsole({ onLeadsGenerated, setTab, initialQuery, s
     },
     {
       label: "Use Case 3: High Balance Wealth Management",
-      query: "Find high net-worth individuals with balances over $100k for wealth advisory campaigns and generate outreach."
+      query: "Find high net-worth individuals with balances over ₹100k for wealth advisory campaigns and generate outreach."
     }
   ];
 
@@ -98,6 +100,11 @@ export default function AgentConsole({ onLeadsGenerated, setTab, initialQuery, s
       if (agentOutput.success && agentOutput.leads.length > 0) {
         onLeadsGenerated(agentOutput.leads, agentOutput.productType);
         setSelectedLeadId(agentOutput.leads[0].customerId);
+        showSuccess(`Scan complete: ${agentOutput.leads.length} lead${agentOutput.leads.length === 1 ? "" : "s"} identified.`);
+      } else if (agentOutput.success) {
+        showError("Scan complete, but no matching prospects were found.");
+      } else {
+        showError(agentOutput.error || "Agent scan failed to complete.");
       }
     }
   }, [currentStepIdx, agentOutput, speed]);

@@ -8,8 +8,11 @@ import HomePage from "./components/HomePage";
 import UserProfile from "./components/UserProfile";
 import Login from "./components/Login";
 import RmManager from "./components/RmManager";
+import { useToast } from "./context/ToastContext.jsx";
 
 export default function App() {
+  const { showSuccess } = useToast();
+
   // Session State
   const [currentUser, setCurrentUser] = useState(() => {
     const savedUser = localStorage.getItem("observe_user");
@@ -87,6 +90,7 @@ export default function App() {
   const handleLogout = () => {
     localStorage.removeItem("observe_user");
     setCurrentUser(null);
+    showSuccess("You've been logged out securely.");
   };
 
   const handleLeadsGenerated = useCallback((generatedLeads, productType) => {

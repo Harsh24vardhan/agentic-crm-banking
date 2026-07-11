@@ -1,12 +1,13 @@
 import { API_BASE_URL } from "../config.js";
 import React, { useState, useEffect } from "react";
-import { UserPlus, MapPin, Check, X, ShieldAlert } from "lucide-react";
+import { UserPlus, MapPin, X, ShieldAlert } from "lucide-react";
 import { mockUsers } from "../agent/mockDatabase.js";
+import { useToast } from "../context/ToastContext.jsx";
 
 export default function RmManager() {
+  const { showSuccess, showError } = useToast();
   const [rms, setRms] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [toast, setToast] = useState(null);
 
   const [form, setForm] = useState({
     name: "",
@@ -15,16 +16,11 @@ export default function RmManager() {
     region: "",
     email: "",
     phone: "",
-    portfolioSize: "$0.00",
+    portfolioSize: "₹0.00",
     conversionRate: "0.0%"
   });
 
   const [error, setError] = useState("");
-
-  const showToast = (msg) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
-  };
 
   const fetchRms = async () => {
     try {
@@ -62,7 +58,7 @@ export default function RmManager() {
       region: form.region.trim() || "General Office",
       email: form.email.trim(),
       phone: form.phone.trim(),
-      portfolioSize: form.portfolioSize || "$0.00",
+      portfolioSize: form.portfolioSize || "₹0.00",
       conversionRate: form.conversionRate || "0.0%"
     };
 
@@ -72,16 +68,18 @@ export default function RmManager() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
-      
+
       const result = await res.json();
       if (res.ok && result.success) {
-        showToast(`Successfully created Relationship Manager profile for ${payload.name}`);
+        showSuccess(`Successfully created Relationship Manager profile for ${payload.name}`);
         fetchRms();
         setShowAddModal(false);
-        setForm({ name: "", username: "", password: "", region: "", email: "", phone: "", portfolioSize: "$0.00", conversionRate: "0.0%" });
+        setForm({ name: "", username: "", password: "", region: "", email: "", phone: "", portfolioSize: "₹0.00", conversionRate: "0.0%" });
         return;
       } else {
-        setError(result.error || "Failed to create RM account.");
+        const msg = result.error || "Failed to create RM account.";
+        setError(msg);
+        showError(msg);
         return;
       }
     } catch {
@@ -91,7 +89,9 @@ export default function RmManager() {
     // Local Fallback
     const exists = mockUsers.some(u => u.username === payload.username);
     if (exists) {
-      setError("Username already exists (offline validation).");
+      const msg = "Username already exists (offline validation).";
+      setError(msg);
+      showError(msg);
       return;
     }
 
@@ -103,22 +103,13 @@ export default function RmManager() {
 
     mockUsers.push(localNewRm);
     setRms(prev => [...prev, localNewRm]);
-    showToast(`Offline Mode: Created Relationship Manager profile for ${payload.name}`);
+    showSuccess(`Offline Mode: Created Relationship Manager profile for ${payload.name}`);
     setShowAddModal(false);
-    setForm({ name: "", username: "", password: "", region: "", email: "", phone: "", portfolioSize: "$0.00", conversionRate: "0.0%" });
+    setForm({ name: "", username: "", password: "", region: "", email: "", phone: "", portfolioSize: "₹0.00", conversionRate: "0.0%" });
   };
 
   return (
     <div style={{ overflowY: "auto", flex: 1, paddingBottom: "2rem" }}>
-      
-      {/* Toast Alert */}
-      {toast && (
-        <div className="toast">
-          <Check size={16} style={{ color: "var(--color-success)" }} />
-          <span>{toast}</span>
-        </div>
-      )}
-
       {/* Header */}
       <div className="card-header" style={{ border: "none", marginBottom: "1.5rem" }}>
         <div>
@@ -167,7 +158,7 @@ export default function RmManager() {
                     <span>{rm.region}</span>
                   </span>
                 </td>
-                <td style={{ fontWeight: 600, color: "var(--color-primary)" }}>{rm.portfolioSize || "$0.00"}</td>
+                <td style={{ fontWeight: 600, color: "var(--color-primary)" }}>{rm.portfolioSize || "₹0.00"}</td>
                 <td style={{ fontWeight: 600, color: "var(--color-success)" }}>{rm.conversionRate || "0.0%"}</td>
               </tr>
             ))}
@@ -282,7 +273,7 @@ export default function RmManager() {
                   <input 
                     type="text" 
                     className="form-control" 
-                    placeholder="e.g. $1.50M"
+                    placeholder="e.g. ₹1.50Cr"
                     value={form.portfolioSize} 
                     onChange={e => setForm({...form, portfolioSize: e.target.value})} 
                   />

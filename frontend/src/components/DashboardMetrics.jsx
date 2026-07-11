@@ -39,7 +39,7 @@ export default function DashboardMetrics({ setActiveTab, setInitialQuery }) {
 
   const stats = [
     { name: "Total CRM Customers", value: customers.length.toString(), icon: Users, change: "+12% this month", positive: true },
-    { name: "Total Portfolio Assets", value: `$${(totalBalance / 1000000).toFixed(2)}M`, icon: DollarSign, change: "Managed assets under custody", positive: true },
+    { name: "Total Portfolio Assets", value: `₹${(totalBalance / 1000000).toFixed(2)}M`, icon: DollarSign, change: "Managed assets under custody", positive: true },
     { name: "Avg. Credit Score", value: avgCreditScore.toString(), icon: Award, change: "Standard low default risk", positive: true },
     { name: "Risk Flagged Accounts", value: riskFlagged.toString(), icon: ShieldAlert, change: "Credit score < 650", positive: false }
   ];
@@ -329,7 +329,7 @@ export default function DashboardMetrics({ setActiveTab, setInitialQuery }) {
             <button 
               className="btn btn-secondary" 
               style={{ width: "100%", fontSize: "0.8rem", padding: "0.4rem 0.75rem", display: "flex", justifyContent: "space-between", borderColor: "var(--color-success-glow)", background: "var(--color-success-glow)" }}
-              onClick={() => triggerQuery("Find high net-worth individuals with balances over $100k for wealth advisory campaigns and generate outreach")}
+              onClick={() => triggerQuery("Find high net-worth individuals with balances over ₹100k for wealth advisory campaigns and generate outreach")}
             >
               <span>💼 Scan Wealth Advisory</span>
               <span style={{ color: "var(--color-success)", fontSize: "0.7rem", fontWeight: "bold" }}>Launch →</span>

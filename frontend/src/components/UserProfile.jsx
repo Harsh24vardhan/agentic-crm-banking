@@ -23,7 +23,7 @@ export default function UserProfile({ currentUser }) {
     region: currentUser?.region || "Unassigned Region",
     email: currentUser?.email || "—",
     phone: currentUser?.phone || "—",
-    portfolioSize: currentUser?.portfolioSize || "$0.00",
+    portfolioSize: currentUser?.portfolioSize || "₹0.00",
     conversionRate: currentUser?.conversionRate || "0.0%"
   };
 
