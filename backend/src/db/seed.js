@@ -53,6 +53,7 @@ async function runSeed() {
         database: dbName
       });
 
+  try {
     await dbClient.connect();
     console.log(`🔌 Connected directly to database "${dbName}".`);
 
