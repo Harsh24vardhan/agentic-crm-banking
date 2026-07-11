@@ -9,11 +9,11 @@ RUN npm ci --only=production
 # Copy the rest of the application files
 COPY . .
 
-# Expose API PORT
-EXPOSE 5000
+# Expose API PORT (Fly.io uses 8080 by default)
+EXPOSE 8080
 
 # Set defaults
-ENV PORT=5000
+ENV PORT=8080
 ENV NODE_ENV=production
 
 # Run API server
