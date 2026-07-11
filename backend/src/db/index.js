@@ -11,13 +11,16 @@ let usePostgres = false;
 
 // Create PG connection pool
 try {
-  pool = new Pool({
-    user: process.env.DB_USER || "postgres",
-    password: process.env.DB_PASSWORD || "postgres",
-    host: process.env.DB_HOST || "localhost",
-    port: parseInt(process.env.DB_PORT || "5432"),
-    database: process.env.DB_NAME || "observebank"
-  });
+  const connectionString = process.env.DATABASE_URL;
+  pool = connectionString 
+    ? new Pool({ connectionString, ssl: { rejectUnauthorized: false } })
+    : new Pool({
+        user: process.env.DB_USER || process.env.PGUSER || "postgres",
+        password: process.env.DB_PASSWORD || process.env.PGPASSWORD || "postgres",
+        host: process.env.DB_HOST || process.env.PGHOST || "localhost",
+        port: parseInt(process.env.DB_PORT || process.env.PGPORT || "5432"),
+        database: process.env.DB_NAME || process.env.PGDATABASE || "observebank"
+      });
 } catch (err) {
   console.warn("⚠️ Failed to initialize Postgres Pool. Falling back to local Mock Arrays.");
 }

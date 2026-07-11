@@ -6,41 +6,52 @@ dotenv.config();
 
 const { Client } = pg;
 
-const client = new Client({
-  user: process.env.DB_USER || "postgres",
-  password: process.env.DB_PASSWORD || "postgres",
-  host: process.env.DB_HOST || "localhost",
-  port: parseInt(process.env.DB_PORT || "5432"),
-  database: "postgres" // Connect to default database first to check/create the target database
+const client = new Client(process.env.DATABASE_URL ? {
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+} : {
+  user: process.env.DB_USER || process.env.PGUSER || "postgres",
+  password: process.env.DB_PASSWORD || process.env.PGPASSWORD || "postgres",
+  host: process.env.DB_HOST || process.env.PGHOST || "localhost",
+  port: parseInt(process.env.DB_PORT || process.env.PGPORT || "5432"),
+  database: "postgres" // Connect to default database first
 });
 
 async function runSeed() {
+  const dbName = process.env.DB_NAME || process.env.PGDATABASE || "observebank";
+
   try {
-    await client.connect();
-    console.log("🔌 Connected to PostgreSQL server.");
-
-    const dbName = process.env.DB_NAME || "observebank";
-
-    // 1. Create database if it doesn't exist
-    const dbCheck = await client.query(`SELECT 1 FROM pg_database WHERE datname = $1`, [dbName]);
-    if (dbCheck.rowCount === 0) {
-      console.log(`Database "${dbName}" not found. Creating...`);
-      // CREATE DATABASE cannot run inside a transaction block, run it directly
-      await client.query(`CREATE DATABASE ${dbName}`);
-      console.log(`Database "${dbName}" created successfully.`);
+    // 1. Try to check/create database if we have permissions
+    if (!process.env.DATABASE_URL) {
+      await client.connect();
+      console.log("🔌 Connected to PostgreSQL master server.");
+      const dbCheck = await client.query(`SELECT 1 FROM pg_database WHERE datname = $1`, [dbName]);
+      if (dbCheck.rowCount === 0) {
+        console.log(`Database "${dbName}" not found. Creating...`);
+        await client.query(`CREATE DATABASE ${dbName}`);
+        console.log(`Database "${dbName}" created successfully.`);
+      } else {
+        console.log(`Database "${dbName}" already exists.`);
+      }
+      await client.end();
     } else {
-      console.log(`Database "${dbName}" already exists.`);
+      console.log("ℹ️ Running on managed cloud instance. Using provided DATABASE_URL.");
     }
-    await client.end();
+  } catch (err) {
+    console.log("ℹ️ Skipping master database creation check (running on managed instance/limited user).");
+    try { await client.end(); } catch(e) {}
+  }
 
-    // 2. Connect to the target database
-    const dbClient = new Client({
-      user: process.env.DB_USER || "postgres",
-      password: process.env.DB_PASSWORD || "postgres",
-      host: process.env.DB_HOST || "localhost",
-      port: parseInt(process.env.DB_PORT || "5432"),
-      database: dbName
-    });
+  // 2. Connect to the target database
+  const dbClient = process.env.DATABASE_URL
+    ? new Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
+    : new Client({
+        user: process.env.DB_USER || process.env.PGUSER || "postgres",
+        password: process.env.DB_PASSWORD || process.env.PGPASSWORD || "postgres",
+        host: process.env.DB_HOST || process.env.PGHOST || "localhost",
+        port: parseInt(process.env.DB_PORT || process.env.PGPORT || "5432"),
+        database: dbName
+      });
 
     await dbClient.connect();
     console.log(`🔌 Connected directly to database "${dbName}".`);
