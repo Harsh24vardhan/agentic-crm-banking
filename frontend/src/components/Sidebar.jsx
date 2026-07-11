@@ -1,22 +1,20 @@
 import React from "react";
-import { Home, LayoutDashboard, Brain, Database, Users, LogOut, Settings, Sun, Moon, Terminal } from "lucide-react";
+import { Home, LayoutDashboard, Brain, Database, Users, LogOut, Settings, Sun, Moon } from "lucide-react";
 
 export default function Sidebar({ activeTab, setActiveTab, currentUser, onLogout, theme, toggleTheme }) {
   const isAdmin = currentUser?.role === "admin";
-  
-  const menuItems = isAdmin 
+
+  const menuItems = isAdmin
     ? [
         { id: "rms", name: "RM Directory", icon: Users },
-        { id: "database", name: "CRM Database", icon: Database },
-        { id: "logs", name: "Backend Logs", icon: Terminal }
+        { id: "database", name: "CRM Database", icon: Database }
       ]
     : [
         { id: "home", name: "Home Console", icon: Home },
         { id: "dashboard", name: "Dashboard", icon: LayoutDashboard },
         { id: "agent", name: "Agent Console", icon: Brain },
         { id: "database", name: "CRM Database", icon: Database },
-        { id: "leads", name: "Campaign Leads", icon: Users },
-        { id: "logs", name: "Backend Logs", icon: Terminal }
+        { id: "leads", name: "Campaign Leads", icon: Users }
       ];
 
   const handleBrandClick = () => {

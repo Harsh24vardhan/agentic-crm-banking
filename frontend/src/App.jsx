@@ -8,7 +8,6 @@ import HomePage from "./components/HomePage";
 import UserProfile from "./components/UserProfile";
 import Login from "./components/Login";
 import RmManager from "./components/RmManager";
-import BackendLogs from "./components/BackendLogs";
 
 export default function App() {
   // Session State
@@ -22,10 +21,10 @@ export default function App() {
   const getTabFromPath = () => {
     const path = window.location.pathname.replace(/^\//, "");
     if (isAdmin) {
-      if (["rms", "database", "logs"].includes(path)) return path;
+      if (["rms", "database"].includes(path)) return path;
       return "rms";
     } else {
-      if (["home", "dashboard", "agent", "database", "leads", "profile", "logs"].includes(path)) return path;
+      if (["home", "dashboard", "agent", "database", "leads", "profile"].includes(path)) return path;
       return "home";
     }
   };
@@ -107,8 +106,6 @@ export default function App() {
               setInitialQuery={setInitialQuery}
             />
           );
-        case "logs":
-          return <BackendLogs />;
         default:
           return <RmManager />;
       }
@@ -156,8 +153,6 @@ export default function App() {
         );
       case "profile":
         return <UserProfile />;
-      case "logs":
-        return <BackendLogs />;
       default:
         return (
           <HomePage

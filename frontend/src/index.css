@@ -211,6 +211,7 @@ body {
 }
 
 .nav-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 1rem;
@@ -220,13 +221,27 @@ body {
   text-decoration: none;
   font-weight: 500;
   cursor: pointer;
-  transition: var(--transition-fast);
+  transition: var(--transition-normal);
   border: 1px solid transparent;
+}
+
+.nav-item::before {
+  content: "";
+  position: absolute;
+  left: -1.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 0;
+  border-radius: 0 3px 3px 0;
+  background: var(--color-primary);
+  transition: var(--transition-normal);
 }
 
 .nav-item:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+  transform: translateX(2px);
 }
 
 .nav-item.active {
@@ -236,9 +251,18 @@ body {
   box-shadow: 0 0 15px rgba(0, 240, 255, 0.05);
 }
 
+.nav-item.active::before {
+  height: 60%;
+}
+
 .nav-icon {
   width: 1.25rem;
   height: 1.25rem;
+  transition: var(--transition-normal);
+}
+
+.nav-item:hover .nav-icon {
+  transform: scale(1.08);
 }
 
 .user-profile {
@@ -980,6 +1004,19 @@ body {
 
 .btn-secondary:hover {
   background: rgba(255, 255, 255, 0.08);
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn:focus-visible,
+.nav-item:focus-visible,
+.user-profile:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 /* Animations */
