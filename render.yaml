@@ -3,7 +3,7 @@ services:
   - type: web
     name: agentic-crm-backend
     runtime: node
-    plan: free
+    plan: starter
     rootDir: backend
     buildCommand: npm install && npm run seed
     startCommand: npm start
@@ -35,11 +35,10 @@ services:
           name: agentic-crm-db
           property: database
 
-  # Vite React Static Frontend Web Site
+  # Vite React Static Frontend Web Site (always free on Render)
   - type: web
     name: agentic-crm-frontend
     runtime: static
-    plan: free
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
