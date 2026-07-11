@@ -1,6 +1,6 @@
 import { API_BASE_URL } from "../config.js";
 import React, { useState, useEffect } from "react";
-import { Brain, Database, Users, LayoutDashboard, Terminal, ArrowRight, ShieldCheck, Cpu, Zap } from "lucide-react";
+import { Brain, Database, Users, LayoutDashboard, ArrowRight, ShieldCheck, Cpu, Zap } from "lucide-react";
 
 export default function HomePage({ setActiveTab, setInitialQuery }) {
   const [status, setStatus] = useState({ online: false, database: "Checking..." });
@@ -15,7 +15,7 @@ export default function HomePage({ setActiveTab, setInitialQuery }) {
         } else {
           throw new Error("Offline");
         }
-      } catch (err) {
+      } catch {
         setStatus({ online: false, database: "Offline" });
       }
     };

@@ -1,7 +1,7 @@
 import { API_BASE_URL } from "../config.js";
 import React, { useState, useEffect } from "react";
 import { mockCustomers, mockTransactions } from "../agent/mockDatabase.js";
-import { Search, UserPlus, FileText, DollarSign, Check, X, AlertCircle } from "lucide-react";
+import { Search, UserPlus, Check, X } from "lucide-react";
 
 export default function DatabaseViewer({ setActiveTab, setInitialQuery }) {
   const [activeSubTab, setActiveSubTab] = useState("customers");

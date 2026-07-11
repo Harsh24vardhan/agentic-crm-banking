@@ -1,6 +1,6 @@
 import { API_BASE_URL } from "../config.js";
 import React, { useState, useEffect } from "react";
-import { UserPlus, Users, MapPin, DollarSign, Mail, Phone, Lock, Check, X, ShieldAlert } from "lucide-react";
+import { UserPlus, MapPin, Check, X, ShieldAlert } from "lucide-react";
 import { mockUsers } from "../agent/mockDatabase.js";
 
 export default function RmManager() {
@@ -36,7 +36,7 @@ export default function RmManager() {
           return;
         }
       }
-    } catch (err) {
+    } catch {
       console.warn("Express backend offline for RM listing. Using local state fallback.");
     }
     
@@ -84,7 +84,7 @@ export default function RmManager() {
         setError(result.error || "Failed to create RM account.");
         return;
       }
-    } catch (err) {
+    } catch {
       console.warn("Express backend offline for RM creation. Falling back to local update.");
     }
 

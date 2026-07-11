@@ -1,6 +1,6 @@
 import { API_BASE_URL } from "../config.js";
 import React, { useState, useEffect } from "react";
-import { Users, TrendingUp, ShieldAlert, Award, FileSpreadsheet, ArrowUpRight, DollarSign, Activity } from "lucide-react";
+import { Users, ShieldAlert, Award, ArrowUpRight, DollarSign } from "lucide-react";
 import { mockCustomers, mockTransactions } from "../agent/mockDatabase.js";
 
 export default function DashboardMetrics({ setActiveTab, setInitialQuery }) {
@@ -15,7 +15,7 @@ export default function DashboardMetrics({ setActiveTab, setInitialQuery }) {
           const custData = await custRes.json();
           if (custData.success) setCustomers(custData.data);
         }
-      } catch (err) {
+      } catch {
         console.warn("Backend offline. Using local array data for dashboard metrics.");
       }
 
@@ -25,7 +25,7 @@ export default function DashboardMetrics({ setActiveTab, setInitialQuery }) {
           const txData = await txRes.json();
           if (txData.success) setTransactions(txData.data);
         }
-      } catch (err) {
+      } catch {
         console.warn("Backend offline. Using local array data for transaction dashboard metrics.");
       }
     };

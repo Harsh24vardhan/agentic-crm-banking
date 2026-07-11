@@ -1,5 +1,6 @@
 import React from "react";
-import { Home, LayoutDashboard, Brain, Database, Users, LogOut, Settings, Sun, Moon } from "lucide-react";
+import { Home, LayoutDashboard, Brain, Database, Users, LogOut, Sun, Moon } from "lucide-react";
+import BrandLogo from "./BrandLogo";
 
 export default function Sidebar({ activeTab, setActiveTab, currentUser, onLogout, theme, toggleTheme }) {
   const isAdmin = currentUser?.role === "admin";
@@ -30,7 +31,7 @@ export default function Sidebar({ activeTab, setActiveTab, currentUser, onLogout
   return (
     <div className="sidebar">
       <div className="brand" style={{ cursor: "pointer" }} onClick={handleBrandClick}>
-        <Brain className="brand-icon" />
+        <BrandLogo size={38} />
         <span className="brand-name">Agentic AI System</span>
       </div>
 

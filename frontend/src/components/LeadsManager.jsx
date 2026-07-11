@@ -1,7 +1,7 @@
 import { API_BASE_URL } from "../config.js";
 import React, { useState, useEffect } from "react";
 import { mockCustomers } from "../agent/mockDatabase";
-import { MessageSquare, PhoneCall, Send, Clipboard, CheckCircle, HelpCircle, Mail, RefreshCw, ExternalLink } from "lucide-react";
+import { MessageSquare, Send, Clipboard, CheckCircle, HelpCircle, Mail, RefreshCw, ExternalLink } from "lucide-react";
 import { generate_personalized_message } from "../agent/tools";
 
 export default function LeadsManager({ leads, activeProduct, setActiveTab, setInitialQuery }) {

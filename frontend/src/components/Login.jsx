@@ -1,11 +1,18 @@
 import { API_BASE_URL } from "../config.js";
 import React, { useState } from "react";
-import { Brain, Lock, User, AlertCircle, Check } from "lucide-react";
+import { Lock, User, AlertCircle, Eye, EyeOff, ShieldCheck, Zap } from "lucide-react";
 import { mockUsers } from "../agent/mockDatabase.js";
+import BrandLogo from "./BrandLogo";
+
+const DEMO_LOGINS = [
+  { label: "Admin Console", username: "admin", password: "password123", icon: ShieldCheck },
+  { label: "Sarah Connor (RM)", username: "sarah", password: "password123", icon: Zap }
+];
 
 export default function Login({ onLoginSuccess }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -35,7 +42,7 @@ export default function Login({ onLoginSuccess }) {
           return;
         }
       }
-    } catch (err) {
+    } catch {
       console.warn("Express backend auth offline. Falling back to local verification.");
     }
 
@@ -61,26 +68,26 @@ export default function Login({ onLoginSuccess }) {
     setLoading(false);
   };
 
+  const fillDemoCredentials = (demo) => {
+    setUsername(demo.username);
+    setPassword(demo.password);
+    setError("");
+  };
+
   return (
     <div className="login-container">
-      <div className="glass-card modal-content" style={{ width: "420px", padding: "2rem", border: "1px solid var(--border-color-active)" }}>
-        
+      <div
+        className="glass-card modal-content"
+        style={{
+          width: "420px",
+          padding: "2.25rem",
+          border: "1px solid var(--border-color-active)",
+          animation: "fade-slide-up 0.5s cubic-bezier(0.4, 0, 0.2, 1)"
+        }}
+      >
         {/* Header */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem", marginBottom: "1.75rem", textAlign: "center" }}>
-          <div style={{
-            width: "54px",
-            height: "54px",
-            borderRadius: "14px",
-            background: "rgba(0, 240, 255, 0.08)",
-            border: "1px solid var(--border-color-active)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            boxShadow: "var(--shadow-glow)",
-            color: "var(--color-primary)"
-          }}>
-            <Brain size={28} className="brand-icon" />
-          </div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.6rem", marginBottom: "1.75rem", textAlign: "center" }}>
+          <BrandLogo size={56} />
           <h2 style={{ fontFamily: "var(--font-display)", fontSize: "1.45rem", fontWeight: "800", background: "linear-gradient(135deg, #fff, var(--color-primary))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
             Agentic AI System Portal
           </h2>
@@ -119,6 +126,8 @@ export default function Login({ onLoginSuccess }) {
               type="text"
               className="form-control"
               required
+              autoFocus
+              autoComplete="username"
               placeholder="e.g. admin or sarah"
               value={username}
               onChange={e => setUsername(e.target.value)}
@@ -131,15 +140,39 @@ export default function Login({ onLoginSuccess }) {
               <Lock size={12} />
               <span>Security Password</span>
             </label>
-            <input
-              type="password"
-              className="form-control"
-              required
-              placeholder="••••••••"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              disabled={loading}
-            />
+            <div style={{ position: "relative" }}>
+              <input
+                type={showPassword ? "text" : "password"}
+                className="form-control"
+                required
+                autoComplete="current-password"
+                placeholder="••••••••"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                disabled={loading}
+                style={{ paddingRight: "2.5rem" }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(prev => !prev)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                style={{
+                  position: "absolute",
+                  right: "0.6rem",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "var(--text-muted)",
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "0.2rem"
+                }}
+              >
+                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            </div>
           </div>
 
           <button
@@ -162,20 +195,41 @@ export default function Login({ onLoginSuccess }) {
         {/* Helper Credentials */}
         <div style={{
           marginTop: "1.5rem",
-          paddingTop: "1rem",
-          borderTop: "1px solid var(--border-color)",
-          fontSize: "0.75rem",
-          color: "var(--text-muted)"
+          paddingTop: "1.25rem",
+          borderTop: "1px solid var(--border-color)"
         }}>
-          <div style={{ fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.35rem" }}>Demo Logins:</div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.25rem" }}>
-            <span>Admin Console: <strong>admin</strong> / password123</span>
+          <div style={{ fontWeight: 600, color: "var(--text-secondary)", fontSize: "0.75rem", marginBottom: "0.6rem" }}>
+            Quick Demo Access
           </div>
-          <div>
-            <span>Sarah Connor (RM): <strong>sarah</strong> / password123</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            {DEMO_LOGINS.map((demo) => {
+              const Icon = demo.icon;
+              return (
+                <button
+                  key={demo.username}
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => fillDemoCredentials(demo)}
+                  disabled={loading}
+                  style={{
+                    justifyContent: "space-between",
+                    padding: "0.55rem 0.8rem",
+                    fontSize: "0.78rem",
+                    fontWeight: 500
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <Icon size={13} style={{ color: "var(--color-primary)" }} />
+                    <span>{demo.label}</span>
+                  </span>
+                  <span style={{ color: "var(--text-muted)", fontFamily: "monospace", fontSize: "0.72rem" }}>
+                    {demo.username} / {demo.password}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
-
       </div>
     </div>
   );

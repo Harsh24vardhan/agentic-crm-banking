@@ -1,6 +1,6 @@
 import { API_BASE_URL } from "../config.js";
 import React, { useState, useEffect } from "react";
-import { Send, Play, Pause, RefreshCw, Terminal, Search, HelpCircle, UserCheck, BrainCircuit, Wrench, Eye } from "lucide-react";
+import { Send, RefreshCw, Terminal, Search, UserCheck, BrainCircuit, Wrench, Eye } from "lucide-react";
 import { runAgent } from "../agent/agentCore";
 
 export default function AgentConsole({ onLeadsGenerated, setTab, initialQuery, setInitialQuery }) {

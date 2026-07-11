@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { User, Award, Shield, CheckCircle, Mail, Phone, MapPin, Briefcase, Settings, Star, TrendingUp } from "lucide-react";
+import { Award, Mail, Phone, MapPin, Briefcase, Settings, TrendingUp } from "lucide-react";
 
 export default function UserProfile({ currentUser }) {
   const roleLabel = currentUser?.role === "admin" ? "System Administrator" : "Relationship Manager";
