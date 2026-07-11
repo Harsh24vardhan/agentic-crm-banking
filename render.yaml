@@ -1,0 +1,41 @@
+services:
+  # Node.js backend Web Service
+  - type: web
+    name: agentic-crm-backend
+    env: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install && npm run seed
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: agentic-crm-db
+          property: connectionString
+      - key: PGHOST
+        fromDatabase:
+          name: agentic-crm-db
+          property: host
+      - key: PGPORT
+        fromDatabase:
+          name: agentic-crm-db
+          property: port
+      - key: PGUSER
+        fromDatabase:
+          name: agentic-crm-db
+          property: user
+      - key: PGPASSWORD
+        fromDatabase:
+          name: agentic-crm-db
+          property: password
+      - key: PGDATABASE
+        fromDatabase:
+          name: agentic-crm-db
+          property: database
+
+databases:
+  - name: agentic-crm-db
+    plan: free
+    postgresDatabaseName: observebank
