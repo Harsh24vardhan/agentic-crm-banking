@@ -1,6 +1,6 @@
 import pg from "pg";
 import dotenv from "dotenv";
-import { mockCustomers, mockTransactions } from "../agent/mockDatabase.js";
+import { mockCustomers, mockTransactions } from "../../../shared/mockDatabase.js";
 
 dotenv.config();
 
@@ -121,8 +121,8 @@ async function runSeed() {
     await dbClient.query(`
       INSERT INTO users (id, name, username, password, role, region, email, phone, portfolio_size, conversion_rate)
       VALUES 
-      ('USR001', 'System Administrator', 'admin', 'password123', 'admin', 'All Regions', 'admin@observebank.com', '+1 (555) 010-0000', '₹0.00', '0.0%'),
-      ('USR002', 'Sarah Connor', 'sarah', 'password123', 'rm', 'Northeast Region (NYC Head Office)', 'sconnor@observebank.com', '+1 (555) 012-9981', '₹4.25M', '82.4%')
+      ('USR001', 'System Administrator', 'admin', 'password123', 'admin', 'All Regions', 'admin@observebank.com', '+91 96010 00000', '₹0.00', '0.0%'),
+      ('USR002', 'Sarah Connor', 'sarah', 'password123', 'rm', 'Western Region (Mumbai Head Office)', 'sconnor@observebank.com', '+91 96012 99810', '₹4.25M', '82.4%')
     `);
 
     // 8. Insert customers

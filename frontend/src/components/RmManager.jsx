@@ -1,7 +1,7 @@
 import { API_BASE_URL } from "../config.js";
 import React, { useState, useEffect } from "react";
 import { UserPlus, MapPin, X, ShieldAlert } from "lucide-react";
-import { mockUsers } from "../agent/mockDatabase.js";
+import { mockUsers } from "../../../shared/mockDatabase.js";
 import { useToast } from "../context/ToastContext.jsx";
 
 export default function RmManager() {
@@ -236,7 +236,7 @@ export default function RmManager() {
                 <input 
                   type="text" 
                   className="form-control" 
-                  placeholder="e.g. Midwest Region (Chicago)"
+                  placeholder="e.g. Southern Region (Bengaluru)"
                   value={form.region} 
                   onChange={e => setForm({...form, region: e.target.value})} 
                 />
@@ -260,7 +260,7 @@ export default function RmManager() {
                     type="text" 
                     className="form-control" 
                     required
-                    placeholder="+1 (555) 018-9922"
+                    placeholder="+91 98765 43210"
                     value={form.phone} 
                     onChange={e => setForm({...form, phone: e.target.value})} 
                   />

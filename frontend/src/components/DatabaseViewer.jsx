@@ -1,6 +1,6 @@
 import { API_BASE_URL } from "../config.js";
 import React, { useState, useEffect } from "react";
-import { mockCustomers, mockTransactions } from "../agent/mockDatabase.js";
+import { mockCustomers, mockTransactions } from "../../../shared/mockDatabase.js";
 import { Search, UserPlus, X } from "lucide-react";
 import { useToast } from "../context/ToastContext.jsx";
 

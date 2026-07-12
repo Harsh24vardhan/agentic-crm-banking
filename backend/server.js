@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import { get_customers, get_customer_transactions, calculate_conversion_probability, generate_personalized_message } from "./src/agent/tools.js";
 import { runAgent } from "./src/agent/agentCore.js";
-import { mockTransactions } from "./src/agent/mockDatabase.js";
+import { runAgentLLM } from "./src/agent/llmAgentCore.js";
 import { addCustomerDb, updateCustomerDb, addTransactionDb, getTransactionsDb, loginUserDb, getRmsDb, addRmDb, getDbStatus } from "./src/db/index.js";
 
 const app = express();
@@ -88,6 +88,10 @@ app.get("/api/outreach/:customerId/:productType/:channel", async (req, res) => {
 });
 
 // 5. POST /api/agent - Process natural language query with ReAct Agent
+// Primary path: an LLM (Groq) dynamically plans and calls tools via a real
+// tool-use loop. Falls back to the deterministic heuristic pipeline when no
+// API key is configured or the LLM call fails, so the feature keeps working
+// offline/without credentials.
 app.post("/api/agent", async (req, res) => {
   try {
     const { query } = req.body;
@@ -95,8 +99,17 @@ app.post("/api/agent", async (req, res) => {
       return res.status(400).json({ success: false, error: "Query string is required in request body." });
     }
 
+    if (process.env.GROQ_API_KEY) {
+      try {
+        const result = await runAgentLLM(query);
+        return res.json(result);
+      } catch (llmError) {
+        console.warn("LLM agent unavailable, falling back to deterministic engine:", llmError.message);
+      }
+    }
+
     const result = await runAgent(query);
-    res.json(result);
+    res.json({ ...result, engine: result.engine || "heuristic" });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

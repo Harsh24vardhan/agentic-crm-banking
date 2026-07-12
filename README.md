@@ -2,6 +2,8 @@
 
 A conversation-based Agentic AI system that helps a bank Relationship Manager (RM) go from a single natural-language request — *"Find high-value customers likely to convert for a personal loan this month and generate personalized WhatsApp messages"* — to a ranked, scored, and individually-personalized outreach campaign, with full visibility into every reasoning step the agent took to get there.
 
+The agent's primary reasoning engine is a real LLM (Groq, `openai/gpt-oss-120b`) driving a genuine tool-use loop — it decides which of the 4 CRM tools to call, in what order, and how many candidates to pursue, based on the actual results of each call, not a fixed script. A deterministic heuristic pipeline stands behind it as an automatic fallback if no LLM key is configured or a call fails, so the system stays fully demoable either way. See [System Architecture](#system-architecture).
+
 Built for the **Take-Home Assignment: Conversation-based Agentic AI for Banking CRM**.
 
 **Live deployment:** [agentic-crm-frontend-plwc.onrender.com](https://agentic-crm-frontend-plwc.onrender.com) · **Repo:** [Harsh24vardhan/agentic-crm-banking](https://github.com/Harsh24vardhan/agentic-crm-banking)
@@ -81,9 +83,9 @@ Direct mapping against the assignment brief, so it's auditable at a glance.
 
 | Requirement | How it's satisfied |
 |---|---|
-| Clear task decomposition | The agent runs a fixed 5-step plan (list → analyze → score → draft → compile), each with an explicit Thought/Action/Observation, rendered live in the Agent Console trace panel |
-| Effective tool/API usage | 4 composable agent tools + a 14-route Express REST API + PostgreSQL — see [REST API Reference](#rest-api-reference) |
-| Structured reasoning and execution flow | See the [sequence diagram](#agentic-reasoning--execution-flow) below — every step's Thought/Action/Observation is logged and replayed in the UI at adjustable speed |
+| Clear task decomposition | Primary path: an LLM (Groq `openai/gpt-oss-120b`) dynamically plans and re-plans based on live tool results via real tool-use/function-calling — not a fixed script. Fallback path: a deterministic 5-step plan (list → analyze → score → draft → compile). Both log an explicit Thought/Action/Observation per step, rendered live in the Agent Console trace panel |
+| Effective tool/API usage | 4 composable agent tools, invocable either by an LLM tool-use loop or a deterministic pipeline, + a 14-route Express REST API + PostgreSQL — see [REST API Reference](#rest-api-reference) |
+| Structured reasoning and execution flow | See the [sequence diagrams](#agentic-reasoning--execution-flow) below — every step's Thought/Action/Observation is logged and replayed in the UI at adjustable speed, for both engines |
 | Proper state/context handling | Session state persisted in `localStorage`; agent trace state, leads hand-off from Agent Console → Leads Manager, and role-based routing all flow through explicit React state, not globals |
 | Modular and extensible design | Strict separation: `/agent` (reasoning + tools), `/components` (presentation), `/db` (persistence), `/context` (cross-cutting UI concerns) — see [Project Structure](#project-structure) |
 
@@ -95,29 +97,42 @@ Direct mapping against the assignment brief, so it's auditable at a glance.
 
 ### Avoiding disqualification criteria
 
-- **"Hardcoded outputs without reasoning"** — every score is computed from live customer/transaction fields at request time (see the actual weighted rules in [Conversion Scoring Model](#conversion-scoring-model-heuristics)); every message branches on real profile content, not a fixed string.
-- **"No meaningful tool usage"** — 4 distinct tools invoked in sequence with data dependencies between steps (step 3 depends on step 1's output, step 4 depends on step 3's ranking).
+- **"Hardcoded outputs without reasoning"** — every score is computed from live customer/transaction fields at request time (see the actual weighted rules in [Conversion Scoring Model](#conversion-scoring-model-heuristics)); every message branches on real profile content, not a fixed string. The primary engine additionally plans its own tool sequence via a real LLM tool-use loop — see [Agentic Reasoning & Execution Flow](#agentic-reasoning--execution-flow).
+- **"No meaningful tool usage"** — 4 distinct tools with typed schemas, invoked with real data dependencies between calls (a later call's arguments depend on an earlier call's result) — either chosen dynamically by an LLM via function-calling, or chained deterministically as a fallback.
 - **"Poor or missing documentation"** — this README.
 
 ---
 
 ## System Architecture
 
-The system has two agent execution paths that share the same tool contracts: a **server-backed path** (Express + Postgres, the canonical source of truth) and a **client-side fallback path** (identical tool logic running against an in-memory dataset in the browser). Every data-fetching component tries the API first and transparently falls back if it's unreachable — see [Key Design Decisions](#key-design-decisions) for why.
+The agent has **three fallback tiers**, all sharing the same 4 tool contracts, so a missing API key, a rate limit, or a dead backend degrades the experience instead of breaking it:
+
+1. **LLM-driven (primary, when `GROQ_API_KEY` is set)** — Claude-style tool-use loop against Groq (`openai/gpt-oss-120b`). The model itself decides which tools to call, in what order, and how many times, based on the actual results of each prior call.
+2. **Deterministic heuristic pipeline (server fallback)** — a fixed 5-step plan (list → analyze → score → draft → compile) that runs if no Groq key is configured or the LLM call throws (rate limit, network error, etc.).
+3. **Client-side offline pipeline (browser fallback)** — the same deterministic logic re-implemented against an in-memory dataset in the browser, used if the Express API itself is unreachable.
 
 ```mermaid
 graph TD
     subgraph Client["Browser — React SPA"]
         UIComp["Sidebar / Dashboard / Agent Console /<br/>Leads Manager / RM Directory / CRM DB Viewer"]
-        LocalAgent["Local Agent Core (agentCore.js)<br/>offline ReAct fallback"]
+        LocalAgent["Local Agent Core (agentCore.js)<br/>Tier 3: offline deterministic fallback"]
         LocalTools["Local Tools (tools.js)<br/>operate on in-memory mock dataset"]
         UIComp --> LocalAgent --> LocalTools
     end
 
     subgraph Server["Express REST API — Render Web Service"]
-        API["/api/* routes (14 endpoints)"]
+        API["POST /api/agent"]
+        LLMCore["llmAgentCore.js<br/>Tier 1: LLM-driven tool-use loop"]
+        DetCore["agentCore.js<br/>Tier 2: deterministic ReAct pipeline"]
         ServerTools["Server Tools (tools.js)<br/>query live Postgres"]
-        API --> ServerTools
+        API -->|"GROQ_API_KEY set"| LLMCore
+        API -.->|"no key, or LLM call throws"| DetCore
+        LLMCore --> ServerTools
+        DetCore --> ServerTools
+    end
+
+    subgraph Groq["Groq Cloud"]
+        Model["openai/gpt-oss-120b<br/>tool-use / function-calling"]
     end
 
     subgraph Data["Neon Serverless PostgreSQL"]
@@ -127,6 +142,7 @@ graph TD
     end
 
     UIComp -->|"fetch() JSON — primary path"| API
+    LLMCore <-->|"chat.completions.create()<br/>tools[], tool_choice: auto"| Model
     ServerTools --> Users
     ServerTools --> Customers
     ServerTools --> Transactions
@@ -206,21 +222,69 @@ erDiagram
 
 ## Agentic Reasoning & Execution Flow
 
-The **Agent Core** runs a fixed, stateful **ReAct (Reasoning → Acting → Observation)** loop. It never asks a language model to freelance the plan — the plan is deterministic (5 steps), but every step's *content* (what it found, how many, which names) is computed live from real data, and the trace is rendered to the RM step-by-step so the reasoning is auditable, not a black box.
+### Tier 1 — LLM-driven dynamic loop (primary path)
+
+[`backend/src/agent/llmAgentCore.js`](backend/src/agent/llmAgentCore.js) hands the query to `openai/gpt-oss-120b` on Groq with the 4 tools declared as function-calling schemas and `tool_choice: "auto"`. **The model decides the plan** — how many tool calls to make, in what order, whether to check transaction history at all, and when it has enough to stop — by reading the actual result of each call before deciding the next one. This is a genuine multi-turn tool-use loop, not a scripted sequence with dynamic parameters.
+
+This is real, observed behavior from a live run (not a hypothetical), captured verbatim from the trace:
 
 ```mermaid
 sequenceDiagram
     actor RM as Relationship Manager
-    participant UI as Agent Console (React)
-    participant Core as Agent Core (ReAct loop)
+    participant API as POST /api/agent
+    participant LLM as llmAgentCore.js
+    participant Model as openai/gpt-oss-120b (Groq)
+    participant Tools as get_customers / calculate_conversion_probability /<br/>generate_personalized_message
+    participant DB as CRM Database
+
+    RM->>API: "Find high-value customers likely to convert for a personal loan..."
+    API->>LLM: runAgentLLM(query)
+    LLM->>Model: messages=[system, user], tools=[...], tool_choice=auto
+
+    note over Model: reasoning: "product = Personal Loan.<br/>Need high-value customers — segment filter, not a guessed number."
+    Model-->>LLM: tool_call: get_customers({segment: "High Value"})
+    LLM->>Tools: get_customers({segment:"High Value"})
+    Tools->>DB: SELECT * FROM customers WHERE segment = 'High Value'
+    DB-->>Tools: 11 rows
+    Tools-->>LLM: {success, count:11, data:[...]}
+    LLM->>Model: tool_result appended, request continues
+
+    note over Model: reasoning: "11 candidates, limited calls —<br/>pick a few with strong indicators first."
+    loop model chooses 4 candidates, one call each
+        Model-->>LLM: tool_call: calculate_conversion_probability(id, "Personal Loan")
+        LLM->>Tools: calculate_conversion_probability(...)
+        Tools-->>LLM: {conversionScore, likelihood, justification[]}
+    end
+
+    note over Model: reasoning: "James 98, Oliver 90, Daniel 70, Sarah 50 —<br/>draft messages for all four scored candidates."
+    loop for each scored candidate
+        Model-->>LLM: tool_call: generate_personalized_message(id, "Personal Loan", "WhatsApp")
+        LLM->>Tools: generate_personalized_message(...)
+        Tools-->>LLM: {message}
+    end
+
+    Model-->>LLM: final answer — no more tool calls, markdown summary table
+    LLM-->>API: {steps[], leads[4], productType, engine:"llm"}
+    API-->>RM: Trace playback + ranked lead cards + editable outreach drafts
+```
+
+The model's own `reasoning` output is captured verbatim into each step's `thought` field — the trace panel shows *the model's actual chain of thought* ("We have 11 high-value customers... limited calls; maybe pick a few with strong indicators..."), not a synthetic label. Iteration is capped at 12 tool calls as a safety bound, not a fixed plan length.
+
+### Tier 2 — Deterministic heuristic pipeline (server fallback)
+
+[`backend/src/agent/agentCore.js`](backend/src/agent/agentCore.js) runs if `GROQ_API_KEY` is unset or the LLM call throws (rate limit, network error, refusal). This is a fixed, auditable 5-step ReAct-style plan — the *plan* is deterministic, but every step's *content* (what it found, how many, which names) is computed live from real data, not templated:
+
+```mermaid
+sequenceDiagram
+    actor RM as Relationship Manager
+    participant Core as agentCore.js (deterministic)
     participant T1 as get_customers
     participant T2 as get_customer_transactions
     participant T3 as calculate_conversion_probability
     participant T4 as generate_personalized_message
     participant DB as CRM Database
 
-    RM->>UI: "Find high-value customers likely to convert for a personal loan..."
-    UI->>Core: runAgent(query)
+    RM->>Core: runAgent(query)
     Core->>Core: parseQueryIntent() → {productType, filters}
 
     rect rgb(30, 41, 59)
@@ -235,8 +299,6 @@ sequenceDiagram
     note over Core: Step 2 — Transaction History Analysis
     loop for each candidate
         Core->>T2: get_customer_transactions(id)
-        T2->>DB: SELECT * FROM transactions WHERE customer_id = ...
-        DB-->>T2: transaction rows
         T2-->>Core: travel / salary / recency markers
     end
     end
@@ -259,11 +321,10 @@ sequenceDiagram
     end
 
     note over Core: Step 5 — Final Compilation
-    Core-->>UI: {steps[], leads[], productType}
-    UI-->>RM: Trace playback + ranked lead cards + editable outreach drafts
+    Core-->>RM: {steps[], leads[], productType, engine:"heuristic"}
 ```
 
-Each step in the actual code carries a real `thought`, `action`, `toolCall`, and `observation` string built from the live result (e.g. *"Found 7 customers matching basic filters. Candidate list: [Sarah Jenkins, David Chen, ...]"*) — not a canned label. The Agent Console lets the RM replay this at **Slow / Normal / Fast** speed or skip straight to the compiled leads.
+Both tiers return the identical `{steps[], leads[], productType, engine}` shape, so the Agent Console's trace-playback UI (**Slow / Normal / Fast** speed, or skip straight to compiled leads) renders either one without knowing which engine produced it. The `engine` field (`"llm"` or `"heuristic"`) is the only observable difference — it's a good way to confirm which path actually ran during a demo.
 
 ---
 
@@ -308,7 +369,7 @@ Express server ([`backend/server.js`](backend/server.js)), all routes prefixed b
 | `POST` | `/api/transactions` | Log a new transaction |
 | `GET` | `/api/score/:customerId/:productType` | Run the scoring model for one customer/product pair |
 | `GET` | `/api/outreach/:customerId/:productType/:channel` | Generate one personalized message |
-| `POST` | `/api/agent` | Full natural-language query → ReAct run → ranked leads |
+| `POST` | `/api/agent` | Full natural-language query → agent run → ranked leads. LLM-driven if `GROQ_API_KEY` is set, deterministic otherwise; response includes `engine: "llm" \| "heuristic"` |
 | `POST` | `/api/auth/login` | Username/password authentication |
 | `GET` | `/api/rms` | List Relationship Managers (admin) |
 | `POST` | `/api/rms` | Create a new RM account (admin) |
@@ -388,10 +449,9 @@ flowchart TD
 
 ## Key Design Decisions
 
-1. **Dual-path agent execution (server + client fallback)**
-   Every network call is wrapped so that if the Express API is unreachable, the exact same tool logic re-runs against an in-memory dataset in the browser. This means the app is demoable with zero backend running, and never shows a dead end if Render's free tier is cold-starting.
+1. **Real LLM-driven tool orchestration, with a deterministic fallback that keeps it demoable under any budget/quota.** The agent's first choice is a genuine tool-use loop against an LLM (Groq `openai/gpt-oss-120b`) — the model decides what to call and when, not a script. But a take-home assignment shouldn't hard-depend on a paid API staying available during grading, so `POST /api/agent` tries the LLM path first and transparently falls back to a deterministic heuristic pipeline if `GROQ_API_KEY` is unset *or* the call throws for any reason (network error, malformed response, and — concretely observed during development — a free-tier 429 rate-limit after repeated testing). Both paths return the same `{steps[], leads[], productType, engine}` shape, so the frontend doesn't need to know which one ran.
 
-2. **Deterministic plan, live content** — see [Execution Flow](#agentic-reasoning--execution-flow). The 5-step plan is fixed; every thought/observation string inside it is generated from the actual query result, not a template.
+2. **Three-tier fallback in total.** Stacking on top of (1): if the Express API itself is unreachable, every data-fetching component re-runs the same tool logic against an in-memory dataset in the browser (`frontend/src/agent/`). So the demo works with no backend running at all, with a backend but no LLM key, or with everything configured — the UI degrades, never breaks.
 
 3. **Rule-based heuristic scoring over ML** — a transparent, inspectable weighted-rule model (see above) instead of a black-box classifier. For a CRM tool an RM has to trust and explain to a compliance reviewer, "here are the 4 reasons this customer scored 82%" is more valuable than an opaque model score.
 
@@ -407,11 +467,18 @@ flowchart TD
 
 9. **Infrastructure-as-config across three providers** — `render.yaml`, `fly.toml`, and `docker-compose.yml` all describe the same service topology, so the same codebase deploys unmodified to Render, Fly.io, or a local Docker stack.
 
+10. **A `/shared` package as the single source of truth for business logic.** Earlier, `mockDatabase.js`, the heuristic scoring/messaging rules, and the NL query parser were hand-duplicated between `frontend/src/agent/` and `backend/src/agent/` — a real maintenance smell where the same rule could silently drift between the two copies. All three are now pure, side-effect-free modules in `/shared` (`mockDatabase.js`, `heuristics.js`, `queryParser.js`), imported by both runtimes. What's left duplicated (`get_customers`/`get_customer_transactions` in each `tools.js`) is *legitimately* different — one filters an in-memory array, the other queries Postgres — not accidental duplication.
+
+11. **A concrete bug the de-dup pass surfaced: the regex parser broke on the assignment's own example query.** Consolidating `parseQueryIntent()` into `/shared/queryParser.js` meant re-reading it closely, which surfaced a real bug: the name-extraction regex matched the literal substring `"customer"` *inside* `"customers"` and captured trailing filler words as a fake name filter — so *"Find high-value customers likely to convert for a personal loan..."* (the assignment's literal example) silently returned **zero leads** on the deterministic path. Fixed by requiring an explicit, capitalized `"customer NAME"` / `"client NAME"` phrase matched against the original (non-lowercased) query, and by dropping the bare `"for X"` trigger that was catching ordinary prose. Verified before/after: 0 leads → 11 leads on the exact same query.
+
 ---
 
 ## Trade-offs & Limitations
 
-- **Pattern-matching NL parser, not an LLM parser.** `parseQueryIntent()` uses regex/keyword matching, not a language model. This guarantees zero API latency, zero cost, and 100% uptime for the assignment's demo queries, but it requires roughly standard phrasing (recognizes "balance", "credit score", "loan", "travel", "wealth", etc.) and won't handle arbitrary paraphrasing or multi-intent queries the way an LLM-backed parser would.
+- **LLM path latency is real and variable.** Because the model plans dynamically — deciding how many candidates to explore, whether to check transaction history, how many to score — a single request can take anywhere from ~20 seconds to a few minutes depending on how many tool-call round-trips it chooses to make. This is a genuine cost of *real* dynamic planning versus a fixed-length script: the fixed deterministic pipeline is near-instant precisely because it doesn't reason about how much work to do. `reasoning_effort: "low"` is set on the Groq call to cut this down (the heavy lifting — scoring math, message templates — happens in our own deterministic tools, not the model, so deep reasoning isn't needed for orchestration), but multi-turn tool loops are inherently slower than a single call.
+- **Groq's free tier has real rate limits (8,000 TPM / 14,400 requests/day, shared across the account).** A multi-turn tool-use conversation resends the full message history each turn, so token usage compounds — a long-running agent loop can burn a meaningful chunk of the per-minute budget on its own. Hitting the limit isn't a failure mode here: `POST /api/agent` catches the 429 and falls back to the deterministic engine (see [Key Design Decisions](#key-design-decisions) #1), so the RM still gets a working result, just from the fallback path. This was observed directly during development, not a hypothetical.
+- **The model doesn't always pick optimal tool arguments on the first try.** In one observed run, the model initially guessed several unrealistic numeric thresholds (`minBalance: 500000`, etc.) for a "high-value" request before self-correcting to use the `segment` field — costing several wasted tool calls. Tightened the tool description and system prompt to explicitly steer qualitative terms toward the `segment` enum instead of invented numbers, which fixed it in testing, but it's a reminder that LLM tool-use quality is sensitive to prompt/schema wording, not just the underlying model's capability.
+- **Deterministic-path NL parsing is regex/keyword matching, not an LLM.** This only applies to Tier 2 (the fallback) — it guarantees zero API latency, zero cost, and 100% uptime when it's the active path, but it requires roughly standard phrasing (recognizes "balance", "credit score", "loan", "travel", "wealth", etc.) and won't handle arbitrary paraphrasing the way the LLM tier does.
 - **Currency is a symbol swap, not an FX conversion.** Per a later request, all `$` were changed to `₹` — the underlying numeric magnitudes are unchanged from the original mock dataset. A customer shown as "₹135,000 income" has the same numeral as it did as "$135,000"; there's no real USD→INR rate applied. Worth knowing if the numbers are read literally.
 - **Dispatch is simulated + optionally deep-linked, not a real send.** The animated "Broadcasting via Twilio API..." sequence is a UX simulation. The WhatsApp/Email buttons *do* open a real compose window via `wa.me`/`mailto:`, but nothing in this codebase calls an actual messaging/SMTP provider (e.g. Twilio, SendGrid) — that would be the next integration point.
 - **Database reseeds on every backend deploy.** Render's build command is `npm install && npm run seed`, and `seed.js` drops and recreates all three tables before inserting baseline data. Any RM or customer added through the UI in production is lost on the next deploy. Fixable by making the seed idempotent (skip if `users` is non-empty) — flagged but not changed, since it would alter existing deploy behavior without an explicit go-ahead.
@@ -428,6 +495,7 @@ flowchart TD
 |---|---|
 | Frontend | React 19, Vite 8, vanilla CSS (custom design system), `lucide-react` icons |
 | Backend | Node.js, Express 4 |
+| LLM (agent orchestration) | Groq (`groq-sdk`), model `openai/gpt-oss-120b` — free tier, OpenAI-compatible tool-use API |
 | Database | PostgreSQL — Neon (serverless, production) / Docker `postgres:15-alpine` (local) |
 | Linting | `oxlint` |
 | Deployment | Render (backend web service + frontend static site), Neon (managed Postgres) |
@@ -439,41 +507,47 @@ flowchart TD
 
 ```
 Assingment/
+├── shared/                        # Single source of truth, imported by both runtimes
+│   ├── mockDatabase.js            # Seed data source (customers, transactions, users)
+│   ├── heuristics.js              # Pure scoring model + message drafting rules
+│   ├── queryParser.js             # NL → {productType, filters} for the deterministic tier
+│   └── package.json               # {"type": "module"} so both ESM apps resolve it cleanly
+│
 ├── backend/
-│   ├── server.js                 # Express app, 14 REST routes
+│   ├── server.js                  # Express app, 14 REST routes
 │   ├── src/
 │   │   ├── agent/
-│   │   │   ├── agentCore.js      # Server-side ReAct orchestrator + NL parser
-│   │   │   ├── tools.js          # 4 agent tools (Postgres-backed)
-│   │   │   └── mockDatabase.js   # Seed data source (customers, transactions, users)
+│   │   │   ├── llmAgentCore.js    # Tier 1: LLM-driven tool-use loop (Groq)
+│   │   │   ├── agentCore.js       # Tier 2: deterministic ReAct orchestrator
+│   │   │   └── tools.js           # 4 agent tools (Postgres-backed), used by both tiers
 │   │   └── db/
-│   │       ├── index.js          # Postgres query layer (pg Pool)
-│   │       └── seed.js           # Schema creation + baseline data seeder
+│   │       ├── index.js           # Postgres query layer (pg Pool)
+│   │       └── seed.js            # Schema creation + baseline data seeder
 │   ├── Dockerfile / fly.toml / start.sh
 │   └── package.json
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── agent/                # Client-side mirror of the agent (offline fallback)
+│   │   ├── agent/                 # Tier 3: client-side offline fallback (mirrors tools.js/agentCore.js)
 │   │   ├── components/
 │   │   │   ├── Login.jsx, Sidebar.jsx, BrandLogo.jsx
 │   │   │   ├── HomePage.jsx, DashboardMetrics.jsx
-│   │   │   ├── AgentConsole.jsx       # ReAct trace playback UI
-│   │   │   ├── LeadsManager.jsx       # Scored leads + dispatch modal
-│   │   │   ├── DatabaseViewer.jsx     # CRM customer/transaction CRUD
-│   │   │   ├── RmManager.jsx          # Admin: RM directory + creation
+│   │   │   ├── AgentConsole.jsx        # Trace playback UI (renders either engine's output)
+│   │   │   ├── LeadsManager.jsx        # Scored leads + dispatch modal
+│   │   │   ├── DatabaseViewer.jsx      # CRM customer/transaction CRUD
+│   │   │   ├── RmManager.jsx           # Admin: RM directory + creation
 │   │   │   └── UserProfile.jsx
 │   │   ├── context/
-│   │   │   └── ToastContext.jsx  # Global success/error notifications
-│   │   ├── App.jsx                # Role-based routing, session state
-│   │   ├── config.js              # API base URL resolution
-│   │   └── index.css              # Full design system + responsive breakpoints
+│   │   │   └── ToastContext.jsx   # Global success/error notifications
+│   │   ├── App.jsx                 # Role-based routing, session state
+│   │   ├── config.js               # API base URL resolution
+│   │   └── index.css               # Full design system + responsive breakpoints
 │   ├── public/logo.svg
 │   └── package.json
 │
-├── docker-compose.yml             # Full local stack: Postgres + backend + frontend
-├── render.yaml                    # Render Blueprint (backend + frontend + Postgres)
-└── package.json                   # Root orchestrator (concurrently runs both apps)
+├── docker-compose.yml              # Full local stack: Postgres + backend + frontend
+├── render.yaml                     # Render Blueprint (backend + frontend + Postgres)
+└── package.json                    # Root orchestrator (concurrently runs both apps)
 ```
 
 ---
@@ -521,6 +595,8 @@ npm run dev     # http://localhost:5173
 | `PORT` | HTTP port | `5000` (`10000` on Render) |
 | `DATABASE_URL` | Full Postgres connection string (used in production/Neon) | — |
 | `PGHOST` / `PGPORT` / `PGUSER` / `PGPASSWORD` / `PGDATABASE` | Discrete Postgres connection params (used if `DATABASE_URL` absent, e.g. local Docker) | `localhost` / `5432` / `postgres` / `postgres` / `observebank` |
+| `GROQ_API_KEY` | Enables the Tier 1 LLM-driven agent (console.groq.com, free, no card). Unset → deterministic Tier 2 pipeline runs instead | — |
+| `GROQ_MODEL` | Override the Groq model used for tool orchestration | `openai/gpt-oss-120b` |
 | `NODE_ENV` | Environment flag | `development` |
 
 ### Frontend
@@ -534,10 +610,10 @@ npm run dev     # http://localhost:5173
 
 Not recorded as part of this session — here's a script hitting everything the brief asks for (3+ use cases, architecture trade-offs) in ~7 minutes:
 
-1. **(1 min) Architecture** — walk through the [System Architecture](#system-architecture) diagram: client, server, dual-path fallback, Postgres.
-2. **(1 min) Use Case 1 — Personal Loan**: log in as `sarah`, Agent Console → *"Find high-value customers likely to convert for a personal loan this month and generate personalized WhatsApp messages"* → narrate the trace playback step-by-step → open a lead, show the score justification and the generated message.
+1. **(1 min) Architecture** — walk through the [System Architecture](#system-architecture) diagram: the three-tier fallback (LLM → deterministic → offline), Postgres.
+2. **(1–2 min) Use Case 1 — Personal Loan, LLM-driven**: log in as `sarah`, Agent Console → *"Find high-value customers likely to convert for a personal loan this month and generate personalized WhatsApp messages"* → narrate the trace playback, pointing out that the `thought` text is the model's **actual reasoning output**, not a canned label — call out `engine: "llm"` in the result. Open a lead, show the score justification and the generated message.
 3. **(1 min) Use Case 2 — Travel Card**: run the "Premium Travel Card Upgrades" preset → point out the score changes for a different heuristic rule set (travel transaction count, foreign fees).
 4. **(1 min) Use Case 3 — Wealth Advisory**: run the HNW preset → show the Conservative vs. growth-oriented message branching.
 5. **(1 min) Dispatch**: open a lead's dispatch modal, click **Open in WhatsApp** to show the real deep-link, then **Confirm & Send** to show the simulated CRM gateway animation.
 6. **(1 min) Admin side**: log out, log in as `admin`, create a new RM, show the RM Directory.
-7. **(1 min) Trade-offs**: mention the regex NL parser vs. an LLM parser, the reseed-on-deploy caveat, and the offline fallback design — see [Trade-offs & Limitations](#trade-offs--limitations) for the full list to draw from.
+7. **(1 min) Trade-offs**: LLM latency/rate-limit trade-offs, the deterministic fallback, the reseed-on-deploy caveat — see [Trade-offs & Limitations](#trade-offs--limitations) for the full list to draw from.

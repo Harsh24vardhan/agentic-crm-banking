@@ -1,7 +1,7 @@
 import { API_BASE_URL } from "../config.js";
 import React, { useState, useEffect } from "react";
 import { Users, ShieldAlert, Award, ArrowUpRight, DollarSign } from "lucide-react";
-import { mockCustomers, mockTransactions } from "../agent/mockDatabase.js";
+import { mockCustomers, mockTransactions } from "../../../shared/mockDatabase.js";
 
 export default function DashboardMetrics({ setActiveTab, setInitialQuery }) {
   const [customers, setCustomers] = useState(mockCustomers);

@@ -1,7 +1,7 @@
 import { API_BASE_URL } from "../config.js";
 import React, { useState } from "react";
 import { Lock, User, AlertCircle, Eye, EyeOff } from "lucide-react";
-import { mockUsers } from "../agent/mockDatabase.js";
+import { mockUsers } from "../../../shared/mockDatabase.js";
 import BrandLogo from "./BrandLogo";
 import { useToast } from "../context/ToastContext.jsx";
 

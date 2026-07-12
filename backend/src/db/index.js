@@ -1,6 +1,6 @@
 import pg from "pg";
 import dotenv from "dotenv";
-import { mockCustomers, mockTransactions, mockUsers } from "../agent/mockDatabase.js";
+import { mockCustomers, mockTransactions, mockUsers } from "../../../shared/mockDatabase.js";
 
 dotenv.config();
 
