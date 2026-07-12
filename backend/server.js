@@ -94,14 +94,18 @@ app.get("/api/outreach/:customerId/:productType/:channel", async (req, res) => {
 // offline/without credentials.
 app.post("/api/agent", async (req, res) => {
   try {
-    const { query } = req.body;
+    const { query, history } = req.body;
     if (!query) {
       return res.status(400).json({ success: false, error: "Query string is required in request body." });
     }
 
     if (process.env.GROQ_API_KEY) {
       try {
-        const result = await runAgentLLM(query);
+        // history is a client-held summary of prior turns in this
+        // conversation (see AgentConsole.jsx) — only the LLM tier is able to
+        // make use of it; the deterministic/offline tiers are intentionally
+        // single-turn (see README trade-offs).
+        const result = await runAgentLLM(query, Array.isArray(history) ? history : []);
         return res.json(result);
       } catch (llmError) {
         console.warn("LLM agent unavailable, falling back to deterministic engine:", llmError.message);

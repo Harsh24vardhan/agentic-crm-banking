@@ -1,10 +1,16 @@
 import Groq from "groq-sdk";
-import { get_customers, get_customer_transactions, calculate_conversion_probability, generate_personalized_message } from "./tools.js";
+import { get_customers, get_customer_transactions, calculate_conversion_probability, submit_personalized_message } from "./tools.js";
 
 // openai/gpt-oss-120b is Groq's current flagship tool-use model (their own
 // recommended migration target after deprecating llama-3.3-70b-versatile).
 const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 const MAX_ITERATIONS = 12;
+// Conversation history is a client-held, lossy summary (see server.js/the
+// frontend), not a full transcript replay — capped here too, defensively,
+// since it feeds directly into the same shared per-minute token budget
+// documented in the README's trade-offs.
+const MAX_HISTORY_TURNS = 12;
+const MAX_HISTORY_TURN_CHARS = 2000;
 
 const SYSTEM_PROMPT = `You are an AI assistant helping a bank Relationship Manager (RM) identify high-potential customers and generate personalized outreach.
 
@@ -12,17 +18,19 @@ You have four tools backed by the bank's live CRM database:
 - get_customers: search for customers matching filter criteria (balance, credit score, income, segment, risk profile, occupation, name)
 - get_customer_transactions: pull a customer's transaction history to look for behavioral signals (travel spend, salary deposits, foreign fees, etc.)
 - calculate_conversion_probability: run the bank's heuristic scoring model for a customer against a specific product
-- generate_personalized_message: draft a WhatsApp or Email message personalized to a specific customer and product
+- submit_personalized_message: submit a WhatsApp or Email message that YOU have written for a specific customer and product
 
 For the RM's request:
 1. Determine which product they mean: "Personal Loan", "Travel Elite Credit Card", or "Wealth Advisory".
 2. Call get_customers. For qualitative descriptors like "high-value", "premium", "HNW", or "ultra HNW", use the segment field ("High Value" / "Ultra HNW") — do NOT invent numeric balance/income/credit-score thresholds unless the RM's request states an explicit number. If you're unsure what filters apply, it's fine to call get_customers with no filters at all and evaluate the results yourself; that's cheaper than guessing thresholds and getting zero matches.
 3. For candidates where it would sharpen your judgment, check get_customer_transactions (e.g. travel spend for a travel card pitch, salary/expiring-loan signals for a personal loan pitch). This is optional — skip it if the customer profile already gives you enough to score confidently.
 4. Score genuine candidates with calculate_conversion_probability for the relevant product. Don't score customers who clearly don't fit the request. 2-4 well-chosen candidates is plenty.
-5. For the strongest-scoring candidates, draft outreach with generate_personalized_message on the requested channel (default WhatsApp). Every candidate you score should get a message — a score with no message is wasted work.
+5. For the strongest-scoring candidates, compose the outreach message yourself and submit it with submit_personalized_message on the requested channel (default WhatsApp). Write real copy grounded in at least one concrete, specific detail about that customer — their name, a fact from their profile notes, a transaction pattern, their risk profile, or a factor from their own score justification. Never reuse the same phrasing across different customers; two candidates with similar scores should still read like two different messages. WhatsApp: conversational tone, 2-4 sentences, at most one emoji. Email: start with a "Subject: ..." line, then a blank line, then a professional body. Every candidate you score should get a message — a score with no message is wasted work.
 6. Once you've scored and drafted messages for the relevant candidates, stop calling tools and give the RM a short summary.
 
-Briefly explain your reasoning before each tool call so the RM can follow your thought process. Be decisive and move quickly to scoring and messaging — you have a limited number of tool calls, so don't spend more than one or two calls exploring before committing to candidates.`;
+Briefly explain your reasoning before each tool call so the RM can follow your thought process. Be decisive and move quickly to scoring and messaging — you have a limited number of tool calls, so don't spend more than one or two calls exploring before committing to candidates.
+
+You may also be given a short summary of earlier turns in this same conversation, before the RM's current message. Use it to resolve references like "the same customers", "now for wealth advisory", "only the ones above 700 credit score", or "what about James Chen". That summary is a compact recap, not a tool result — if the current request needs fresher or more detailed data than the summary contains, call the tools again rather than assuming old numbers still hold.`;
 
 const TOOL_DEFINITIONS = [
   {
@@ -76,16 +84,17 @@ const TOOL_DEFINITIONS = [
   {
     type: "function",
     function: {
-      name: "generate_personalized_message",
-      description: "Draft a personalized outreach message for a specific customer and product. Only call this for customers already scored as good candidates.",
+      name: "submit_personalized_message",
+      description: "Submit a personalized outreach message that YOU write yourself for a specific customer and product. Only call this for customers already scored as good candidates. This tool only validates and records what you submit — it does not write the copy for you.",
       parameters: {
         type: "object",
         properties: {
           customerId: { type: "string", description: "The customer's ID" },
           productType: { type: "string", enum: ["Personal Loan", "Travel Elite Credit Card", "Wealth Advisory"], description: "The product being pitched" },
-          channel: { type: "string", enum: ["WhatsApp", "Email"], description: "Outreach channel; defaults to WhatsApp" }
+          channel: { type: "string", enum: ["WhatsApp", "Email"], description: "Outreach channel; defaults to WhatsApp" },
+          message: { type: "string", description: "The full outreach message text, written by you. Must reference at least one concrete, specific detail about this customer (their name plus a real profile note, transaction pattern, or score factor) — not generic boilerplate. WhatsApp: conversational, 2-4 sentences. Email: begin with a 'Subject: ...' line, then a blank line, then the body." }
         },
-        required: ["customerId", "productType"]
+        required: ["customerId", "productType", "channel", "message"]
       }
     }
   }
@@ -99,11 +108,25 @@ async function executeTool(name, input) {
       return await get_customer_transactions(input.customerId);
     case "calculate_conversion_probability":
       return await calculate_conversion_probability(input.customerId, input.productType);
-    case "generate_personalized_message":
-      return await generate_personalized_message(input.customerId, input.productType, input.channel || "WhatsApp");
+    case "submit_personalized_message":
+      return await submit_personalized_message(input.customerId, input.productType, input.channel || "WhatsApp", input.message);
     default:
       return { success: false, error: `Unknown tool: ${name}` };
   }
+}
+
+// The trace log's Action line is meant to be a scannable call signature, not
+// a wall of JSON — submit_personalized_message is the one tool whose full
+// argument would otherwise dump the entire authored message inline. The full
+// text is still what's used and is shown in full in the Outreach Preview
+// panel; this is a display-only truncation.
+function formatToolCall(name, input) {
+  if (name === "submit_personalized_message") {
+    const preview = (input.message || "").slice(0, 60);
+    const ellipsis = (input.message || "").length > 60 ? "…" : "";
+    return `submit_personalized_message(${input.customerId}, "${input.productType}", "${input.channel || "WhatsApp"}", message: "${preview}${ellipsis}")`;
+  }
+  return `${name}(${JSON.stringify(input)})`;
 }
 
 function summarizeObservation(name, result) {
@@ -115,11 +138,26 @@ function summarizeObservation(name, result) {
       return `Retrieved ${result.count} transactions for ${result.customerName}.`;
     case "calculate_conversion_probability":
       return `${result.customerName} scored ${result.conversionScore}% (${result.likelihood}) for ${result.productType}.`;
-    case "generate_personalized_message":
-      return `Drafted a ${result.channel} message for ${result.customerName}.`;
+    case "submit_personalized_message":
+      return `Recorded a ${result.channel} message for ${result.customerName}, written by the model.`;
     default:
       return "Done.";
   }
+}
+
+/**
+ * Prior conversation turns are a client-held, lossy summary (see server.js /
+ * AgentConsole.jsx), not a raw tool-call transcript — so history stays
+ * cheap in tokens even across a long conversation. Sanitized again here
+ * since it lands directly in the Groq request payload.
+ * @param {Array} history
+ */
+function sanitizeHistory(history) {
+  if (!Array.isArray(history)) return [];
+  return history
+    .filter(turn => turn && (turn.role === "user" || turn.role === "assistant") && typeof turn.content === "string" && turn.content.trim())
+    .slice(-MAX_HISTORY_TURNS)
+    .map(turn => ({ role: turn.role, content: turn.content.trim().slice(0, MAX_HISTORY_TURN_CHARS) }));
 }
 
 /**
@@ -128,12 +166,14 @@ function summarizeObservation(name, result) {
  * prior call — not a fixed script. Falls back to the deterministic pipeline
  * (agentCore.js) if this throws; see server.js.
  * @param {string} query
+ * @param {Array<{role: "user"|"assistant", content: string}>} [history] prior turns of this conversation, oldest first
  * @returns {Promise<{success: boolean, steps: Array, leads: Array, productType: string, engine: string}>}
  */
-export async function runAgentLLM(query) {
+export async function runAgentLLM(query, history = []) {
   const client = new Groq();
   const messages = [
     { role: "system", content: SYSTEM_PROMPT },
+    ...sanitizeHistory(history),
     { role: "user", content: query }
   ];
   const steps = [];
@@ -187,7 +227,7 @@ export async function runAgentLLM(query) {
         scoresByKey.set(key, result);
         detectedProductType = detectedProductType || result.productType;
       }
-      if (call.function.name === "generate_personalized_message" && result.success) {
+      if (call.function.name === "submit_personalized_message" && result.success) {
         const key = `${result.customerId}:${result.productType}`;
         messagesByKey.set(key, result.message);
       }
@@ -196,7 +236,7 @@ export async function runAgentLLM(query) {
         stepNumber,
         thought: idx === 0 ? (thought || `Calling ${call.function.name}.`) : `(parallel call) ${call.function.name}`,
         action: call.function.name,
-        toolCall: `${call.function.name}(${JSON.stringify(input)})`,
+        toolCall: formatToolCall(call.function.name, input),
         observation: summarizeObservation(call.function.name, result)
       });
 

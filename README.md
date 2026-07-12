@@ -2,7 +2,7 @@
 
 A conversation-based Agentic AI system that helps a bank Relationship Manager (RM) go from a single natural-language request — *"Find high-value customers likely to convert for a personal loan this month and generate personalized WhatsApp messages"* — to a ranked, scored, and individually-personalized outreach campaign, with full visibility into every reasoning step the agent took to get there.
 
-The agent's primary reasoning engine is a real LLM (Groq, `openai/gpt-oss-120b`) driving a genuine tool-use loop — it decides which of the 4 CRM tools to call, in what order, and how many candidates to pursue, based on the actual results of each call, not a fixed script. A deterministic heuristic pipeline stands behind it as an automatic fallback if no LLM key is configured or a call fails, so the system stays fully demoable either way. See [System Architecture](#system-architecture).
+The agent's primary reasoning engine is a real LLM (Groq, `openai/gpt-oss-120b`) driving a genuine tool-use loop — it decides which of the 4 CRM tools to call, in what order, and how many candidates to pursue, based on the actual results of each call, not a fixed script. It's also genuinely conversational, not single-shot: a follow-up like *"now do the same for wealth advisory"* is resolved against a running summary of the conversation, and outreach copy is composed fresh by the model for each customer rather than assembled from a template. A deterministic heuristic pipeline stands behind it as an automatic fallback if no LLM key is configured or a call fails, so the system stays fully demoable either way. See [System Architecture](#system-architecture).
 
 Built for the **Take-Home Assignment: Conversation-based Agentic AI for Banking CRM**.
 
@@ -77,7 +77,7 @@ Direct mapping against the assignment brief, so it's auditable at a glance.
 | Identify high-value customers | Composable filters — balance, income, credit score, segment, risk profile — parsed from free text | `parseQueryIntent()` in [`agentCore.js`](frontend/src/agent/agentCore.js) |
 | Estimate likelihood of conversion (rules/heuristics) | Per-product weighted heuristic scoring (not ML, not hardcoded) using income, credit score, balance, transaction patterns, and free-text profile notes | `calculate_conversion_probability()` — see [Conversion Scoring Model](#conversion-scoring-model-heuristics) |
 | Recommend suitable products | Product intent detected from the query (`Personal Loan` / `Travel Elite Credit Card` / `Wealth Advisory`) plus a `recommendations[]` list per lead | `parseQueryIntent()`, `calculate_conversion_probability()` |
-| Generate personalized outreach messages | Message copy branches on real customer signals (loan expiry, occupation, travel notes, risk profile, segment) — never a static template | `generate_personalized_message()` |
+| Generate personalized outreach messages | Tier 1 (LLM): the model composes the message itself from the customer's real notes, transaction signals, and score justification — genuinely generated text, not a template. Tier 2/3 (fallback): message copy branches on real customer signals (loan expiry, occupation, travel notes, risk profile, segment) — not free-generated, but never a single static string either | `submit_personalized_message()` (Tier 1), `generate_personalized_message()` (Tier 2/3) |
 
 ### Expectations
 
@@ -86,7 +86,7 @@ Direct mapping against the assignment brief, so it's auditable at a glance.
 | Clear task decomposition | Primary path: an LLM (Groq `openai/gpt-oss-120b`) dynamically plans and re-plans based on live tool results via real tool-use/function-calling — not a fixed script. Fallback path: a deterministic 5-step plan (list → analyze → score → draft → compile). Both log an explicit Thought/Action/Observation per step, rendered live in the Agent Console trace panel |
 | Effective tool/API usage | 4 composable agent tools, invocable either by an LLM tool-use loop or a deterministic pipeline, + a 14-route Express REST API + PostgreSQL — see [REST API Reference](#rest-api-reference) |
 | Structured reasoning and execution flow | See the [sequence diagrams](#agentic-reasoning--execution-flow) below — every step's Thought/Action/Observation is logged and replayed in the UI at adjustable speed, for both engines |
-| Proper state/context handling | Session state persisted in `localStorage`; agent trace state, leads hand-off from Agent Console → Leads Manager, and role-based routing all flow through explicit React state, not globals |
+| Proper state/context handling | Session state persisted in `localStorage`; agent trace state, leads hand-off from Agent Console → Leads Manager, and role-based routing all flow through explicit React state, not globals. Multi-turn conversation state (Tier 1 only) is a client-held, capped summary of prior turns threaded back through each request — see [Key Design Decision #15](#key-design-decisions) |
 | Modular and extensible design | Strict separation: `/agent` (reasoning + tools), `/components` (presentation), `/db` (persistence), `/context` (cross-cutting UI concerns) — see [Project Structure](#project-structure) |
 
 ### Deliverables
@@ -234,12 +234,13 @@ sequenceDiagram
     participant API as POST /api/agent
     participant LLM as llmAgentCore.js
     participant Model as openai/gpt-oss-120b (Groq)
-    participant Tools as get_customers / calculate_conversion_probability /<br/>generate_personalized_message
+    participant Tools as get_customers / calculate_conversion_probability /<br/>submit_personalized_message
     participant DB as CRM Database
 
     RM->>API: "Find high-value customers likely to convert for a personal loan..."
-    API->>LLM: runAgentLLM(query)
-    LLM->>Model: messages=[system, user], tools=[...], tool_choice=auto
+    API->>LLM: runAgentLLM(query, history)
+    note over LLM: history = capped summary of prior turns<br/>(empty on the first turn of a conversation)
+    LLM->>Model: messages=[system, ...history, user], tools=[...], tool_choice=auto
 
     note over Model: reasoning: "product = Personal Loan.<br/>Need high-value customers — segment filter, not a guessed number."
     Model-->>LLM: tool_call: get_customers({segment: "High Value"})
@@ -256,19 +257,24 @@ sequenceDiagram
         Tools-->>LLM: {conversionScore, likelihood, justification[]}
     end
 
-    note over Model: reasoning: "James 98, Oliver 90, Daniel 70, Sarah 50 —<br/>draft messages for all four scored candidates."
+    note over Model: reasoning: "James 98, Oliver 90, Daniel 70, Sarah 50 —<br/>write and submit a message for each scored candidate."
     loop for each scored candidate
-        Model-->>LLM: tool_call: generate_personalized_message(id, "Personal Loan", "WhatsApp")
-        LLM->>Tools: generate_personalized_message(...)
-        Tools-->>LLM: {message}
+        note over Model: model composes the message text itself,<br/>from notes/signals/justification already in context
+        Model-->>LLM: tool_call: submit_personalized_message(id, "Personal Loan", "WhatsApp", message: "...model-authored text...")
+        LLM->>Tools: submit_personalized_message(...)
+        Tools-->>LLM: {message, authoredBy:"llm"}
     end
 
     Model-->>LLM: final answer — no more tool calls, markdown summary table
     LLM-->>API: {steps[], leads[4], productType, engine:"llm"}
     API-->>RM: Trace playback + ranked lead cards + editable outreach drafts
+    RM->>API: follow-up: "now do the same for wealth advisory" + accumulated history
+    note over API,RM: next turn re-enters this same diagram,<br/>with history now non-empty
 ```
 
 The model's own `reasoning` output is captured verbatim into each step's `thought` field — the trace panel shows *the model's actual chain of thought* ("We have 11 high-value customers... limited calls; maybe pick a few with strong indicators..."), not a synthetic label. Iteration is capped at 12 tool calls as a safety bound, not a fixed plan length.
+
+**Multi-turn conversations.** `AgentConsole.jsx` keeps a running, capped (12-turn) summary of the conversation client-side — not a raw tool-call transcript, just one compact line per turn (`buildTurnSummary()`) — and sends it back as `history` on every subsequent `/api/agent` call. The system prompt tells the model how to use it: resolve references like *"the same customers"* or *"only the ones above 700 credit score"* against the summary, but re-call the tools if the current request needs fresher or more detailed data than a lossy recap can provide. A **New Conversation** control in the UI clears the history explicitly; the three preset use-case buttons also start fresh automatically, since they're independent demo scenarios, not turns of one conversation. This is Tier 1 only — see [Key Design Decision #15](#key-design-decisions) for why Tier 2/3 stay single-turn.
 
 ### Tier 2 — Deterministic heuristic pipeline (server fallback)
 
@@ -330,7 +336,7 @@ Both tiers return the identical `{steps[], leads[], productType, engine}` shape,
 
 ## Tool Design & Interface Definitions
 
-Registered functions in [`frontend/src/agent/tools.js`](frontend/src/agent/tools.js) (client fallback) and [`backend/src/agent/tools.js`](backend/src/agent/tools.js) (server, backed by Postgres via `db/index.js`) — identical contracts, different data source.
+Registered functions in [`frontend/src/agent/tools.js`](frontend/src/agent/tools.js) (client fallback) and [`backend/src/agent/tools.js`](backend/src/agent/tools.js) (server, backed by Postgres via `db/index.js`). The first three tools are identical contracts across all three tiers; the fourth intentionally is *not* — see below.
 
 ### 1. `get_customers(filters)`
 Queries the CRM customer table with composable filters.
@@ -347,10 +353,14 @@ Runs the heuristic scoring model (full rules in the [next section](#conversion-s
 - **Arguments**: `customerId: string`, `productType: "Personal Loan" | "Travel Elite Credit Card" | "Wealth Advisory"`
 - **Output**: `{ success, customerId, customerName, productType, conversionScore: 0-100, likelihood: "High"|"Medium"|"Low", justification: string[], recommendations: string[] }`
 
-### 4. `generate_personalized_message(customerId, productType, channel)`
-Drafts channel-specific copy, branching on the customer's real notes/segment/risk profile.
-- **Arguments**: `customerId`, `productType`, `channel: "WhatsApp" | "Email"`
-- **Output**: `{ success, customerId, customerName, productType, channel, message }`
+### 4. Outreach drafting — deliberately different contracts per tier
+
+This is the one tool whose contract is *not* shared across tiers, on purpose (see [Key Design Decision #16](#key-design-decisions)):
+
+- **Tier 1 (LLM) — `submit_personalized_message(customerId, productType, channel, message)`**: the `message` is a **required argument the model writes itself**, using the customer's real notes, transaction signals, and score justification it already gathered earlier in the same run. The tool's own code does no copywriting — it validates the message is non-empty and attaches the customer envelope. This is what makes Tier 1 output genuinely generative rather than a templated fill-in.
+  - **Output**: `{ success, customerId, customerName, productType, channel, message, authoredBy: "llm" }`
+- **Tier 2/3 (deterministic/offline) — `generate_personalized_message(customerId, productType, channel)`**: drafts channel-specific copy by branching on the customer's real notes/segment/risk profile inside `shared/heuristics.js`. Same customer in, same message out, every time — which is the entire point of a fallback tier: predictable, instant, free, and reviewed copy when there's no model in the loop.
+  - **Output**: `{ success, customerId, customerName, productType, channel, message }`
 
 ---
 
@@ -369,7 +379,7 @@ Express server ([`backend/server.js`](backend/server.js)), all routes prefixed b
 | `POST` | `/api/transactions` | Log a new transaction |
 | `GET` | `/api/score/:customerId/:productType` | Run the scoring model for one customer/product pair |
 | `GET` | `/api/outreach/:customerId/:productType/:channel` | Generate one personalized message |
-| `POST` | `/api/agent` | Full natural-language query → agent run → ranked leads. LLM-driven if `GROQ_API_KEY` is set, deterministic otherwise; response includes `engine: "llm" \| "heuristic"` |
+| `POST` | `/api/agent` | Full natural-language query → agent run → ranked leads. Body: `{ query, history? }` — `history` (optional, Tier 1 only) is a capped array of `{role, content}` turn summaries for follow-up requests. LLM-driven if `GROQ_API_KEY` is set, deterministic otherwise; response includes `engine: "llm" \| "heuristic"` |
 | `POST` | `/api/auth/login` | Username/password authentication |
 | `GET` | `/api/rms` | List Relationship Managers (admin) |
 | `POST` | `/api/rms` | Create a new RM account (admin) |
@@ -477,14 +487,20 @@ flowchart TD
 
 14. **A `node:test` suite locks in the two riskiest pure-logic modules, including a regression test for #11.** `shared/heuristics.test.js` and `shared/queryParser.test.js` (29 tests, zero new dependencies — Node's built-in test runner) cover the scoring model's clamping/likelihood-threshold behavior, the "already owns this product" score overrides, and — critically — assert that the assignment's exact example query never re-acquires a spurious name filter. Run with `npm test` from the repo root.
 
+15. **Multi-turn conversation state is a client-held, capped summary — not server sessions and not a raw transcript replay.** The assignment is literally titled *"conversation-based"* Agentic AI, but the first cut of this system was single-turn: every query started a cold `messages=[system, user]`, with no way to say *"now do the same for wealth advisory"* as a follow-up. Two implementation options existed: server-side session storage (keyed by a session ID), or client-held history sent back on each request. Server sessions were rejected for a concrete, deployment-specific reason — Render's free tier sleeps the backend after ~15 min idle, and in-process session state doesn't survive that (or a redeploy); it would look like memory that silently evaporates mid-demo. `AgentConsole.jsx` instead keeps an array of compact turn summaries (`buildTurnSummary()` — one line per turn: the query plus which customers were found/scored, not a full tool-call transcript) and POSTs it as `history` alongside each new query, capped at 12 turns on both ends (client and `llmAgentCore.js`, defense in depth). This keeps a long conversation's token cost roughly flat instead of compounding turn-over-turn, which matters directly for the rate-limit trade-off below. This capability is Tier 1 (LLM) only — Tier 2/3 remain intentionally single-turn, since faking conversational memory on top of a regex parser would be exactly the kind of dishonest "looks agentic but isn't" behavior this README argues against elsewhere.
+
+16. **The LLM tier writes outreach messages itself; the fallback tiers still use templates — on purpose, not as an oversight.** Originally, all three tiers called the same `generate_personalized_message` tool, which always ran the same `shared/heuristics.js` template selector — meaning the *same customer* produced byte-identical copy whether the "intelligent" LLM tier or the deterministic fallback served the request. That's a real gap: an interviewer asking "does the LLM actually write the message, or just decide who gets one?" deserved an honest "just decide," which wasn't good enough. Fixed by splitting the contract (see [Tool Design](#tool-design--interface-definitions) #4): Tier 1 now calls `submit_personalized_message(customerId, productType, channel, message)`, where `message` is a required argument **the model composes itself** from the customer notes, transaction signals, and score justification already in its context — the tool only validates and records it. Tier 2/3 keep calling the original `generate_personalized_message`, which still drafts from templates. This is deliberately *not* unified: a fallback tier's entire value is being predictable, instant, and free — template output is a feature there, not a limitation to hide.
+
 ---
 
 ## Trade-offs & Limitations
 
 - **LLM path latency is real and variable.** Because the model plans dynamically — deciding how many candidates to explore, whether to check transaction history, how many to score — a single request can take anywhere from ~20 seconds to a few minutes depending on how many tool-call round-trips it chooses to make. This is a genuine cost of *real* dynamic planning versus a fixed-length script: the fixed deterministic pipeline is near-instant precisely because it doesn't reason about how much work to do. `reasoning_effort: "low"` is set on the Groq call to cut this down (the heavy lifting — scoring math, message templates — happens in our own deterministic tools, not the model, so deep reasoning isn't needed for orchestration), but multi-turn tool loops are inherently slower than a single call.
-- **Groq's free tier has real rate limits (8,000 TPM / 14,400 requests/day, shared across the account).** A multi-turn tool-use conversation resends the full message history each turn, so token usage compounds — a long-running agent loop can burn a meaningful chunk of the per-minute budget on its own. Hitting the limit isn't a failure mode here: `POST /api/agent` catches the 429 and falls back to the deterministic engine (see [Key Design Decisions](#key-design-decisions) #1), so the RM still gets a working result, just from the fallback path. This was observed directly during development, not a hypothetical.
+- **Groq's free tier has real rate limits, on two separate axes, both confirmed directly (not hypothetical).** 8,000 tokens/minute is documented; during this project's own testing, a **200,000 tokens/day** organization-wide cap was also hit and confirmed from the API's own error response (`"Limit 200000, Used 195457"`), with a short suggested retry window rather than a calendar-day reset. A multi-turn tool-use conversation resends the full message history each turn, and conversation `history` (Key Design Decision #15) adds a small amount more per follow-up — both compound token usage, which eats into whichever of the two limits is tighter at the time. Hitting either isn't a failure mode here: `POST /api/agent` catches the error and falls back to the deterministic engine (see [Key Design Decisions](#key-design-decisions) #1), so the RM still gets a working result, just from the fallback path.
 - **The model doesn't always pick optimal tool arguments on the first try.** In one observed run, the model initially guessed several unrealistic numeric thresholds (`minBalance: 500000`, etc.) for a "high-value" request before self-correcting to use the `segment` field — costing several wasted tool calls. Tightened the tool description and system prompt to explicitly steer qualitative terms toward the `segment` enum instead of invented numbers, which fixed it in testing, but it's a reminder that LLM tool-use quality is sensitive to prompt/schema wording, not just the underlying model's capability.
 - **Deterministic-path NL parsing is regex/keyword matching, not an LLM.** This only applies to Tier 2 (the fallback) — it guarantees zero API latency, zero cost, and 100% uptime when it's the active path, but it requires roughly standard phrasing (recognizes "balance", "credit score", "loan", "travel", "wealth", etc.) and won't handle arbitrary paraphrasing the way the LLM tier does.
+- **LLM-authored messages (Tier 1) are generated text, with the usual generation risk that comes with that.** Because `submit_personalized_message` now takes model-written copy instead of validated template output, Tier 1 messages can in principle drift — an invented specific or a phrasing an RM wouldn't approve — in a way a fixed template structurally cannot. The system prompt constrains tone, length, and requires grounding in a real customer detail, and the trace log shows the exact text that was submitted for review, but nothing enforces the constraints at the code level the way a template does. Treat Tier 1 output as an RM-reviewed draft, not an auto-send. Tier 2/3 output has no such caveat — same input always produces the same, previously-reviewed copy.
+- **Conversation history is a lossy summary, not a full replay, and is Tier 1 only.** Follow-ups work by giving the model a compact recap (customer names, IDs, scores — not the original tool results or its own past reasoning), capped at 12 turns. This is enough for the model to resolve "the same customers" or pivot the product, but a request that needs precise figures from three turns ago may cause it to re-query rather than recall exactly — which is the intended, safer behavior (see Key Design Decision #15), but means the conversation isn't a perfect memory. Tier 2/3 ignore `history` entirely and answer every query fresh.
 - **Currency is a symbol swap, not an FX conversion.** Per a later request, all `$` were changed to `₹` — the underlying numeric magnitudes are unchanged from the original mock dataset. A customer shown as "₹135,000 income" has the same numeral as it did as "$135,000"; there's no real USD→INR rate applied. Worth knowing if the numbers are read literally.
 - **Dispatch is simulated + optionally deep-linked, not a real send.** The animated "Broadcasting via Twilio API..." sequence is a UX simulation. The WhatsApp/Email buttons *do* open a real compose window via `wa.me`/`mailto:`, but nothing in this codebase calls an actual messaging/SMTP provider (e.g. Twilio, SendGrid) — that would be the next integration point.
 - **Database reseeds on every backend deploy.** Render's build command is `npm install && npm run seed`, and `seed.js` drops and recreates all three tables before inserting baseline data. Any RM or customer added through the UI in production is lost on the next deploy. Fixable by making the seed idempotent (skip if `users` is non-empty) — flagged but not changed, since it would alter existing deploy behavior without an explicit go-ahead.
@@ -628,9 +644,10 @@ Runs the `node:test` suite (`shared/heuristics.test.js`, `shared/queryParser.tes
 Not recorded as part of this session — here's a script hitting everything the brief asks for (3+ use cases, architecture trade-offs) in ~7 minutes:
 
 1. **(1 min) Architecture** — walk through the [System Architecture](#system-architecture) diagram: the three-tier fallback (LLM → deterministic → offline), Postgres.
-2. **(1–2 min) Use Case 1 — Personal Loan, LLM-driven**: log in as `sarah`, Agent Console → *"Find high-value customers likely to convert for a personal loan this month and generate personalized WhatsApp messages"* → narrate the trace playback, pointing out that the `thought` text is the model's **actual reasoning output**, not a canned label — call out `engine: "llm"` in the result. Open a lead, show the score justification and the generated message.
-3. **(1 min) Use Case 2 — Travel Card**: run the "Premium Travel Card Upgrades" preset → point out the score changes for a different heuristic rule set (travel transaction count, foreign fees).
-4. **(1 min) Use Case 3 — Wealth Advisory**: run the HNW preset → show the Conservative vs. growth-oriented message branching.
-5. **(1 min) Dispatch**: open a lead's dispatch modal, click **Open in WhatsApp** to show the real deep-link, then **Confirm & Send** to show the simulated CRM gateway animation.
-6. **(1 min) Admin side**: log out, log in as `admin`, create a new RM, show the RM Directory.
-7. **(1 min) Trade-offs**: LLM latency/rate-limit trade-offs, the deterministic fallback, the reseed-on-deploy caveat — see [Trade-offs & Limitations](#trade-offs--limitations) for the full list to draw from.
+2. **(1–2 min) Use Case 1 — Personal Loan, LLM-driven**: log in as `sarah`, Agent Console → *"Find high-value customers likely to convert for a personal loan this month and generate personalized WhatsApp messages"* → narrate the trace playback, pointing out that the `thought` text is the model's **actual reasoning output**, not a canned label — call out the **LLM-driven (Groq)** engine badge next to the execution log. Open a lead, show the score justification and the generated message, and note it was composed by the model itself, not pulled from a template.
+3. **(1 min) Use Case 2 — Multi-turn follow-up**: without clicking "New Conversation," type a follow-up in the same box — e.g. *"now do the same thing but for wealth advisory"* — and show the conversation pill trail above the input, then the new trace resolving "the same" against the prior turn. This is the direct answer to "is this actually conversation-based, or just single-shot Q&A?"
+4. **(1 min) Use Case 3 — Travel Card**: click **New Conversation** first, then run the "Premium Travel Card Upgrades" preset → point out the score changes for a different heuristic rule set (travel transaction count, foreign fees).
+5. **(30 sec) Use Case 4 — Wealth Advisory (fresh)**: run the HNW preset → show the Conservative vs. growth-oriented message branching, and that phrasing differs customer-to-customer even at similar scores (proof the copy isn't one fixed string).
+6. **(1 min) Dispatch**: open a lead's dispatch modal, click **Open in WhatsApp** to show the real deep-link, then **Confirm & Send** to show the simulated CRM gateway animation.
+7. **(1 min) Admin side**: log out, log in as `admin`, create a new RM, show the RM Directory.
+8. **(1 min) Trade-offs**: LLM latency/rate-limit trade-offs (including the two separate Groq limits actually hit during development), the deterministic fallback and its engine badge, LLM-authored messages being a review-before-send draft rather than an auto-send, the reseed-on-deploy caveat — see [Trade-offs & Limitations](#trade-offs--limitations) for the full list to draw from.

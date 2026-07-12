@@ -1,8 +1,26 @@
 import { API_BASE_URL } from "../config.js";
 import React, { useState, useEffect } from "react";
-import { Send, RefreshCw, Terminal, Search, UserCheck, BrainCircuit, Wrench, Eye, Zap, ListChecks, WifiOff } from "lucide-react";
+import { Send, RefreshCw, Terminal, Search, UserCheck, BrainCircuit, Wrench, Eye, Zap, ListChecks, WifiOff, MessageSquare, RotateCcw } from "lucide-react";
 import { runAgent } from "../agent/agentCore";
 import { useToast } from "../context/ToastContext.jsx";
+
+const MAX_HISTORY_TURNS = 12;
+
+// A compact, human-readable recap of one turn — not a tool-call transcript.
+// This is what gets sent back to the LLM tier as conversation history on the
+// *next* turn, so it stays cheap in tokens (see llmAgentCore.js). Only the
+// LLM tier reads history; the deterministic/offline tiers are single-turn
+// by design (see README trade-offs).
+function buildTurnSummary(userQuery, result) {
+  if (!result || !result.success) {
+    return `Query: "${userQuery}" -> failed (${result?.error || "unknown error"}).`;
+  }
+  if (!result.leads || result.leads.length === 0) {
+    return `Query: "${userQuery}" -> no qualifying candidates found for ${result.productType}.`;
+  }
+  const leadList = result.leads.map((l) => `${l.customerName} (${l.customerId}, ${l.conversionScore}%)`).join(", ");
+  return `Query: "${userQuery}" -> found and scored ${result.leads.length} candidate(s) for ${result.productType}: ${leadList}.`;
+}
 
 export default function AgentConsole({ onLeadsGenerated, setTab, initialQuery, setInitialQuery }) {
   const { showSuccess, showError } = useToast();
@@ -13,6 +31,7 @@ export default function AgentConsole({ onLeadsGenerated, setTab, initialQuery, s
   const [visibleSteps, setVisibleSteps] = useState([]);
   const [currentStepIdx, setCurrentStepIdx] = useState(-1);
   const [selectedLeadId, setSelectedLeadId] = useState(null);
+  const [conversationHistory, setConversationHistory] = useState([]);
 
   const presets = [
     {
@@ -29,20 +48,39 @@ export default function AgentConsole({ onLeadsGenerated, setTab, initialQuery, s
     }
   ];
 
-  // Auto-trigger search when initialQuery is provided from another view
+  // Auto-trigger search when initialQuery is provided from another view.
+  // Arriving from elsewhere in the app is a new topic, not a follow-up, so
+  // it starts a fresh conversation.
   useEffect(() => {
     if (initialQuery && initialQuery.trim()) {
-      handleStart(initialQuery);
+      handleStart(initialQuery, true);
       setInitialQuery("");
     }
   }, [initialQuery, setInitialQuery]);
 
-  const handleStart = async (selectedQuery) => {
+  const handleNewConversation = () => {
+    setConversationHistory([]);
+    setQuery("");
+    setAgentOutput(null);
+    setVisibleSteps([]);
+    setCurrentStepIdx(-1);
+    setSelectedLeadId(null);
+  };
+
+  const handleStart = async (selectedQuery, resetConversation = false) => {
     const q = selectedQuery || query;
     if (!q.trim()) return;
 
     if (selectedQuery) {
       setQuery(selectedQuery);
+    }
+
+    // Pass the history explicitly rather than reading it back from state
+    // right after clearing it — setState is async, so a same-tick read
+    // could still see the pre-reset value.
+    const historyForThisTurn = resetConversation ? [] : conversationHistory;
+    if (resetConversation) {
+      setConversationHistory([]);
     }
 
     setIsRunning(true);
@@ -51,35 +89,38 @@ export default function AgentConsole({ onLeadsGenerated, setTab, initialQuery, s
     setAgentOutput(null);
     setSelectedLeadId(null);
 
+    let result;
     try {
-      // Attempt backend API call
+      // Attempt backend API call. `history` only matters to the LLM tier —
+      // the deterministic engine ignores it (single-turn by design).
       const response = await fetch(`${API_BASE_URL}/api/agent`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: q })
+        body: JSON.stringify({ query: q, history: historyForThisTurn })
       });
       if (response.ok) {
-        const result = await response.json();
-        setAgentOutput(result);
-        if (result.success && result.leads.length > 0) {
-          onLeadsGenerated(result.leads, result.productType);
-          setSelectedLeadId(result.leads[0].customerId);
-        }
-        setCurrentStepIdx(0);
-        return;
+        result = await response.json();
       }
     } catch (err) {
       console.warn("Express backend API offline. Falling back to local client-side ReAct core.", err);
     }
 
-    // Client-side fallback run
-    const result = runAgent(q);
+    // Client-side fallback run (backend unreachable or returned non-OK)
+    if (!result) {
+      result = runAgent(q);
+    }
+
     setAgentOutput(result);
     if (result.success && result.leads.length > 0) {
       onLeadsGenerated(result.leads, result.productType);
       setSelectedLeadId(result.leads[0].customerId);
     }
-    
+    setConversationHistory([
+      ...historyForThisTurn,
+      { role: "user", content: q },
+      { role: "assistant", content: buildTurnSummary(q, result) }
+    ].slice(-MAX_HISTORY_TURNS));
+
     // Start step-by-step visualization
     setCurrentStepIdx(0);
   };
@@ -163,15 +204,19 @@ export default function AgentConsole({ onLeadsGenerated, setTab, initialQuery, s
               type="text"
               id="agent-query-input"
               className="agent-input"
-              placeholder="Ask the Agent... (e.g. Find personal loan candidates with credit score > 700)"
+              placeholder={
+                conversationHistory.length > 0
+                  ? "Ask a follow-up... (e.g. now do the same for wealth advisory)"
+                  : "Ask the Agent... (e.g. Find personal loan candidates with credit score > 700)"
+              }
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleStart()}
               disabled={isRunning}
             />
-            <button 
+            <button
               id="run-agent-btn"
-              className="agent-submit-btn" 
+              className="agent-submit-btn"
               onClick={() => handleStart()}
               disabled={isRunning || !query.trim()}
             >
@@ -179,6 +224,29 @@ export default function AgentConsole({ onLeadsGenerated, setTab, initialQuery, s
               <span>{isRunning ? "Running..." : "Run Agent"}</span>
             </button>
           </div>
+
+          {conversationHistory.length > 0 && (
+            <div className="conversation-thread-bar">
+              <div className="conversation-thread-pills">
+                <MessageSquare size={13} style={{ flexShrink: 0, color: "var(--color-primary)" }} />
+                {conversationHistory.filter((t) => t.role === "user").map((turn, idx) => (
+                  <span key={idx} className="conversation-pill" title={turn.content}>
+                    {turn.content.length > 44 ? `${turn.content.slice(0, 44)}…` : turn.content}
+                  </span>
+                ))}
+              </div>
+              <button
+                id="new-conversation-btn"
+                className="conversation-reset-btn"
+                onClick={handleNewConversation}
+                disabled={isRunning}
+                title="Clear conversation memory and start a new topic"
+              >
+                <RotateCcw size={13} />
+                <span>New Conversation</span>
+              </button>
+            </div>
+          )}
 
           {!isRunning && visibleSteps.length === 0 && (
             <div className="preset-queries">
@@ -189,7 +257,7 @@ export default function AgentConsole({ onLeadsGenerated, setTab, initialQuery, s
                     key={idx}
                     id={`preset-btn-${idx}`}
                     className="preset-btn"
-                    onClick={() => handleStart(preset.query)}
+                    onClick={() => handleStart(preset.query, true)}
                   >
                     {preset.label}
                   </button>
