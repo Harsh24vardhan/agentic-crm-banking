@@ -1,5 +1,6 @@
 import pg from "pg";
 import dotenv from "dotenv";
+import bcrypt from "bcryptjs";
 import { mockCustomers, mockTransactions } from "../../../shared/mockDatabase.js";
 
 dotenv.config();
@@ -116,14 +117,16 @@ async function runSeed() {
       )
     `);
 
-    // 7. Insert default users
+    // 7. Insert default users (passwords bcrypt-hashed, never stored in plaintext)
     console.log("Seeding default users...");
+    const adminPasswordHash = await bcrypt.hash("password123", 10);
+    const sarahPasswordHash = await bcrypt.hash("password123", 10);
     await dbClient.query(`
       INSERT INTO users (id, name, username, password, role, region, email, phone, portfolio_size, conversion_rate)
-      VALUES 
-      ('USR001', 'System Administrator', 'admin', 'password123', 'admin', 'All Regions', 'admin@observebank.com', '+91 96010 00000', '₹0.00', '0.0%'),
-      ('USR002', 'Sarah Connor', 'sarah', 'password123', 'rm', 'Western Region (Mumbai Head Office)', 'sconnor@observebank.com', '+91 96012 99810', '₹4.25M', '82.4%')
-    `);
+      VALUES
+      ('USR001', 'System Administrator', 'admin', $1, 'admin', 'All Regions', 'admin@observebank.com', '+91 96010 00000', '₹0.00', '0.0%'),
+      ('USR002', 'Sarah Connor', 'sarah', $2, 'rm', 'Western Region (Mumbai Head Office)', 'sconnor@observebank.com', '+91 96012 99810', '₹4.25M', '82.4%')
+    `, [adminPasswordHash, sarahPasswordHash]);
 
     // 8. Insert customers
     console.log(`Seeding ${mockCustomers.length} customers...`);

@@ -179,7 +179,7 @@ erDiagram
         varchar id PK
         varchar name
         varchar username UK
-        varchar password
+        varchar password "bcrypt hash — never plaintext"
         varchar role "admin | rm"
         varchar region
         varchar email
@@ -324,7 +324,7 @@ sequenceDiagram
     Core-->>RM: {steps[], leads[], productType, engine:"heuristic"}
 ```
 
-Both tiers return the identical `{steps[], leads[], productType, engine}` shape, so the Agent Console's trace-playback UI (**Slow / Normal / Fast** speed, or skip straight to compiled leads) renders either one without knowing which engine produced it. The `engine` field (`"llm"` or `"heuristic"`) is the only observable difference — it's a good way to confirm which path actually ran during a demo.
+Both tiers return the identical `{steps[], leads[], productType, engine}` shape, so the Agent Console's trace-playback UI (**Slow / Normal / Fast** speed, or skip straight to compiled leads) renders either one without knowing which engine produced it. The `engine` field (`"llm"`, `"heuristic"`, or `"offline"`) is surfaced directly in the UI as a badge next to the execution log — "LLM-driven (Groq)", "Deterministic Engine", or "Offline Fallback", each styled distinctly — so which tier actually served a given run is visible at a glance during a demo, not something you have to infer or check the network tab for.
 
 ---
 
@@ -471,6 +471,12 @@ flowchart TD
 
 11. **A concrete bug the de-dup pass surfaced: the regex parser broke on the assignment's own example query.** Consolidating `parseQueryIntent()` into `/shared/queryParser.js` meant re-reading it closely, which surfaced a real bug: the name-extraction regex matched the literal substring `"customer"` *inside* `"customers"` and captured trailing filler words as a fake name filter — so *"Find high-value customers likely to convert for a personal loan..."* (the assignment's literal example) silently returned **zero leads** on the deterministic path. Fixed by requiring an explicit, capitalized `"customer NAME"` / `"client NAME"` phrase matched against the original (non-lowercased) query, and by dropping the bare `"for X"` trigger that was catching ordinary prose. Verified before/after: 0 leads → 11 leads on the exact same query.
 
+12. **Passwords are bcrypt-hashed end to end, not stored or compared as plaintext.** `seed.js` hashes both baseline accounts before insert; `addRmDb` hashes on every new RM creation, on both the Postgres path and the in-memory-fallback path; `loginUserDb` verifies with `bcrypt.compare()` against the stored hash instead of a `===` string check. The mock-array fallback (only active when Postgres itself is unreachable) hashes its demo users once at startup into a separate `Map` and immediately deletes the plaintext `password` field from the array — closing a real secondary leak this surfaced: `getRmsDb()`'s mock-array branch was returning raw user objects, plaintext password included, to `GET /api/rms`. `bcryptjs` (pure JS, no native build step) was chosen over `bcrypt` specifically to avoid adding a native-compile dependency to a Render build pipeline that's already had enough deployment friction this project.
+
+13. **An engine badge makes the fallback tier visible in the UI, not just inferable from the JSON.** The entire point of the three-tier design is that a demo keeps working when the LLM is rate-limited or unconfigured — but a fallback response looks visually identical to an LLM response unless something calls it out, which would make the resilience story invisible in a demo. `AgentConsole.jsx` now renders a small badge next to the execution log naming the engine that actually served the current result.
+
+14. **A `node:test` suite locks in the two riskiest pure-logic modules, including a regression test for #11.** `shared/heuristics.test.js` and `shared/queryParser.test.js` (29 tests, zero new dependencies — Node's built-in test runner) cover the scoring model's clamping/likelihood-threshold behavior, the "already owns this product" score overrides, and — critically — assert that the assignment's exact example query never re-acquires a spurious name filter. Run with `npm test` from the repo root.
+
 ---
 
 ## Trade-offs & Limitations
@@ -482,9 +488,8 @@ flowchart TD
 - **Currency is a symbol swap, not an FX conversion.** Per a later request, all `$` were changed to `₹` — the underlying numeric magnitudes are unchanged from the original mock dataset. A customer shown as "₹135,000 income" has the same numeral as it did as "$135,000"; there's no real USD→INR rate applied. Worth knowing if the numbers are read literally.
 - **Dispatch is simulated + optionally deep-linked, not a real send.** The animated "Broadcasting via Twilio API..." sequence is a UX simulation. The WhatsApp/Email buttons *do* open a real compose window via `wa.me`/`mailto:`, but nothing in this codebase calls an actual messaging/SMTP provider (e.g. Twilio, SendGrid) — that would be the next integration point.
 - **Database reseeds on every backend deploy.** Render's build command is `npm install && npm run seed`, and `seed.js` drops and recreates all three tables before inserting baseline data. Any RM or customer added through the UI in production is lost on the next deploy. Fixable by making the seed idempotent (skip if `users` is non-empty) — flagged but not changed, since it would alter existing deploy behavior without an explicit go-ahead.
-- **Plaintext passwords.** The `users.password` column stores plaintext (fine for a take-home demo login, not production-appropriate — would need bcrypt hashing).
 - **Mock dataset size.** 20 customers, ~50 transactions — enough to demonstrate selective filtering and varied scoring outcomes, not a production-scale dataset.
-- **No automated test suite.** Verification in this project has been manual + headless-browser smoke checks during development, not a CI test suite.
+- **Test coverage is unit-level, not end-to-end.** `shared/heuristics.js` and `shared/queryParser.js` — the two modules where a silent logic bug would be hardest to spot by eye (see Key Design Decision #11) — have a `node:test` suite (`npm test`, 29 tests, zero new dependencies). The Express routes, the LLM tool-use loop, and the React components are still verified manually plus headless-browser smoke checks, not by an automated integration/E2E suite.
 - **Render free-tier cold starts.** Both services sleep after ~15 min idle; first request after that takes 30–60s.
 
 ---
@@ -497,6 +502,8 @@ flowchart TD
 | Backend | Node.js, Express 4 |
 | LLM (agent orchestration) | Groq (`groq-sdk`), model `openai/gpt-oss-120b` — free tier, OpenAI-compatible tool-use API |
 | Database | PostgreSQL — Neon (serverless, production) / Docker `postgres:15-alpine` (local) |
+| Auth | `bcryptjs` password hashing (pure JS, no native build step) |
+| Testing | Node's built-in `node:test` + `assert/strict` — zero added dependencies |
 | Linting | `oxlint` |
 | Deployment | Render (backend web service + frontend static site), Neon (managed Postgres) |
 | Alternate deploy targets | Fly.io (`fly.toml`), Koyeb/Docker (`Dockerfile`), Docker Compose (full local stack) |
@@ -510,7 +517,9 @@ Assingment/
 ├── shared/                        # Single source of truth, imported by both runtimes
 │   ├── mockDatabase.js            # Seed data source (customers, transactions, users)
 │   ├── heuristics.js              # Pure scoring model + message drafting rules
+│   ├── heuristics.test.js         # node:test suite for the scoring model
 │   ├── queryParser.js             # NL → {productType, filters} for the deterministic tier
+│   ├── queryParser.test.js        # node:test suite, incl. the Key Design Decision #11 regression
 │   └── package.json               # {"type": "module"} so both ESM apps resolve it cleanly
 │
 ├── backend/
@@ -584,6 +593,14 @@ npm run dev     # http://localhost:5173
 ```
 
 > **Offline-capable by design**: if you run only the frontend, every component detects the failed `fetch()` and transparently falls back to the client-side agent running against an in-memory dataset — no backend required to demo the core reasoning flow.
+
+### Testing
+
+```bash
+npm test        # from the repo root
+```
+
+Runs the `node:test` suite (`shared/heuristics.test.js`, `shared/queryParser.test.js`) covering the conversion-scoring model and the NL query parser — including a regression test for the query-parser bug documented in [Key Design Decision #11](#key-design-decisions). No test-framework dependency; uses Node's built-in runner.
 
 ---
 

@@ -1,6 +1,6 @@
 import { API_BASE_URL } from "../config.js";
 import React, { useState, useEffect } from "react";
-import { Send, RefreshCw, Terminal, Search, UserCheck, BrainCircuit, Wrench, Eye } from "lucide-react";
+import { Send, RefreshCw, Terminal, Search, UserCheck, BrainCircuit, Wrench, Eye, Zap, ListChecks, WifiOff } from "lucide-react";
 import { runAgent } from "../agent/agentCore";
 import { useToast } from "../context/ToastContext.jsx";
 
@@ -127,6 +127,24 @@ export default function AgentConsole({ onLeadsGenerated, setTab, initialQuery, s
     return "score-low";
   };
 
+  const ENGINE_CONFIG = {
+    llm: { icon: Zap, label: "LLM-driven (Groq)", className: "engine-badge-llm", title: "A real LLM dynamically planned this tool-use loop — it chose which tools to call, in what order, based on live results." },
+    heuristic: { icon: ListChecks, label: "Deterministic Engine", className: "engine-badge-heuristic", title: "Server-side fixed pipeline (LLM unavailable or no API key configured). Same tools, scripted order — a designed fallback, not a bug." },
+    offline: { icon: WifiOff, label: "Offline Fallback", className: "engine-badge-offline", title: "Backend unreachable — the ReAct pipeline ran entirely in-browser against local mock data." }
+  };
+
+  const EngineBadge = () => {
+    const config = ENGINE_CONFIG[agentOutput?.engine];
+    if (!config) return null;
+    const Icon = config.icon;
+    return (
+      <span className={`engine-badge ${config.className}`} title={config.title}>
+        <Icon size={12} />
+        {config.label}
+      </span>
+    );
+  };
+
   return (
     <div className="agent-console-layout">
       {/* Left panel: Query entry & ReAct execution trace */}
@@ -188,6 +206,7 @@ export default function AgentConsole({ onLeadsGenerated, setTab, initialQuery, s
               <h3 style={{ fontSize: "0.95rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 <span>Agent Execution Logs</span>
                 {isRunning && <span className="loader" style={{ width: 14, height: 14, borderWidth: 2 }}></span>}
+                <EngineBadge />
               </h3>
               <button id="trace-speed-btn" className="trace-speed-btn" onClick={toggleSpeed}>
                 Speed: {getSpeedLabel()}

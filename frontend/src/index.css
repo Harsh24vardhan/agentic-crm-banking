@@ -595,6 +595,37 @@ body {
   color: var(--text-primary);
 }
 
+.engine-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+  cursor: help;
+}
+
+.engine-badge-llm {
+  background: var(--color-primary-glow);
+  border-color: rgba(0, 240, 255, 0.35);
+  color: var(--color-primary);
+}
+
+.engine-badge-heuristic {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: var(--color-warning);
+}
+
+.engine-badge-offline {
+  background: rgba(107, 114, 128, 0.15);
+  border-color: rgba(107, 114, 128, 0.3);
+  color: var(--text-muted);
+}
+
 .trace-flow {
   display: flex;
   flex-direction: column;

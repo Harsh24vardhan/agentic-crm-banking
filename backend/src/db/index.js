@@ -1,10 +1,20 @@
 import pg from "pg";
 import dotenv from "dotenv";
+import bcrypt from "bcryptjs";
 import { mockCustomers, mockTransactions, mockUsers } from "../../../shared/mockDatabase.js";
 
 dotenv.config();
 
 const { Pool } = pg;
+
+// Mock-array fallback only (used when Postgres is unreachable): pre-hash the
+// demo passwords once at startup so auth exercises real bcrypt.compare here
+// too, not a plaintext `===` check. The plaintext field is then deleted so it
+// can never leak through an API response (e.g. GET /api/rms).
+const mockPasswordHashes = new Map(
+  mockUsers.map(u => [u.username, bcrypt.hashSync(u.password, 10)])
+);
+mockUsers.forEach(u => { delete u.password; });
 
 let pool = null;
 let usePostgres = false;
@@ -396,15 +406,20 @@ export async function addTransactionDb(tx) {
 // 7. Authenticate user credentials
 export async function loginUserDb(username, password) {
   if (!usePostgres) {
-    const user = mockUsers.find(u => u.username === username && u.password === password);
-    if (!user) return { success: false, error: "Invalid username or password." };
+    const user = mockUsers.find(u => u.username === username);
+    const hash = mockPasswordHashes.get(username);
+    if (!user || !hash || !bcrypt.compareSync(password, hash)) {
+      return { success: false, error: "Invalid username or password." };
+    }
     return { success: true, data: { id: user.id, name: user.name, username: user.username, role: user.role, region: user.region, email: user.email, phone: user.phone, portfolioSize: user.portfolioSize, conversionRate: user.conversionRate } };
   }
 
   try {
-    const { rows } = await pool.query("SELECT * FROM users WHERE username = $1 AND password = $2", [username, password]);
+    const { rows } = await pool.query("SELECT * FROM users WHERE username = $1", [username]);
     if (rows.length === 0) return { success: false, error: "Invalid username or password." };
     const r = rows[0];
+    const passwordMatches = await bcrypt.compare(password, r.password);
+    if (!passwordMatches) return { success: false, error: "Invalid username or password." };
     return {
       success: true,
       data: {
@@ -456,20 +471,23 @@ export async function addRmDb(rmData) {
     // Check if username already exists
     const exists = mockUsers.some(u => u.username === rmData.username);
     if (exists) return { success: false, error: "Username already exists." };
-    
+
+    const { password, ...rmFields } = rmData;
     const newRm = {
-      ...rmData,
+      ...rmFields,
       id: `USR${String(mockUsers.length + 1).padStart(3, "0")}`,
       role: "rm",
       portfolioSize: rmData.portfolioSize || "₹0.00",
       conversionRate: rmData.conversionRate || "0.0%"
     };
     mockUsers.push(newRm);
+    mockPasswordHashes.set(newRm.username, bcrypt.hashSync(password, 10));
     return { success: true, data: newRm };
   }
 
   try {
     const id = `USR${Date.now()}`;
+    const passwordHash = await bcrypt.hash(rmData.password, 10);
     const queryText = `
       INSERT INTO users (id, name, username, password, role, region, email, phone, portfolio_size, conversion_rate)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -479,7 +497,7 @@ export async function addRmDb(rmData) {
       id,
       rmData.name,
       rmData.username,
-      rmData.password,
+      passwordHash,
       "rm",
       rmData.region || "General",
       rmData.email,

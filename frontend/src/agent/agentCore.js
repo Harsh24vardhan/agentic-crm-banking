@@ -23,7 +23,7 @@ export function runAgent(query) {
   const customerResult = get_customers(filters);
   if (!customerResult.success) {
     steps[0].observation = `Error retrieving customers: ${customerResult.error}`;
-    return { success: false, steps, leads: [] };
+    return { success: false, steps, leads: [], engine: "offline" };
   }
 
   const rawCustomers = customerResult.data;
@@ -112,6 +112,7 @@ export function runAgent(query) {
     steps,
     leads: finalLeads,
     productType,
-    filters
+    filters,
+    engine: "offline"
   };
 }
