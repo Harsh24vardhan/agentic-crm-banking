@@ -3,7 +3,8 @@ import cors from "cors";
 import { get_customers, get_customer_transactions, calculate_conversion_probability, generate_personalized_message } from "./src/agent/tools.js";
 import { runAgent } from "./src/agent/agentCore.js";
 import { runAgentLLM } from "./src/agent/llmAgentCore.js";
-import { addCustomerDb, updateCustomerDb, addTransactionDb, getTransactionsDb, loginUserDb, getRmsDb, addRmDb, getDbStatus } from "./src/db/index.js";
+import { addCustomerDb, updateCustomerDb, addTransactionDb, getTransactionsDb, loginUserDb, getRmsDb, addRmDb, deleteRmDb, getDbStatus } from "./src/db/index.js";
+import { validateRmInput, isValidName, isValidPhone } from "../shared/validators.js";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -132,6 +133,13 @@ app.get("/api/transactions", async (req, res) => {
 // 7. POST /api/customers - Add a new CRM customer
 app.post("/api/customers", async (req, res) => {
   try {
+    if (!isValidName(req.body.name)) {
+      return res.status(400).json({ success: false, error: "Name can only contain letters, spaces, and ' . - characters — no numbers or symbols." });
+    }
+    if (!isValidPhone(req.body.phone)) {
+      return res.status(400).json({ success: false, error: "Enter a valid Indian phone number, e.g. +91 98765 43210." });
+    }
+
     const result = await addCustomerDb(req.body);
     if (!result.success) {
       return res.status(400).json(result);
@@ -145,6 +153,13 @@ app.post("/api/customers", async (req, res) => {
 // 8. PUT /api/customers/:id - Update an existing customer profile
 app.put("/api/customers/:id", async (req, res) => {
   try {
+    if (req.body.name !== undefined && !isValidName(req.body.name)) {
+      return res.status(400).json({ success: false, error: "Name can only contain letters, spaces, and ' . - characters — no numbers or symbols." });
+    }
+    if (req.body.phone !== undefined && !isValidPhone(req.body.phone)) {
+      return res.status(400).json({ success: false, error: "Enter a valid Indian phone number, e.g. +91 98765 43210." });
+    }
+
     const result = await updateCustomerDb(req.params.id, req.body);
     if (!result.success) {
       return res.status(404).json(result);
@@ -198,11 +213,32 @@ app.get("/api/rms", async (req, res) => {
 // 12. POST /api/rms - Create a new Relationship Manager
 app.post("/api/rms", async (req, res) => {
   try {
+    // Server-side enforcement — the frontend validates the same rules for
+    // immediate feedback, but that alone is never trusted since this route
+    // is a public HTTP endpoint that can be hit directly.
+    const { valid, errors } = validateRmInput(req.body);
+    if (!valid) {
+      return res.status(400).json({ success: false, error: Object.values(errors)[0], errors });
+    }
+
     const result = await addRmDb(req.body);
     if (!result.success) {
       return res.status(400).json(result);
     }
     res.status(201).json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 13. DELETE /api/rms/:id - Remove a Relationship Manager account (admin)
+app.delete("/api/rms/:id", async (req, res) => {
+  try {
+    const result = await deleteRmDb(req.params.id);
+    if (!result.success) {
+      return res.status(404).json(result);
+    }
+    res.json(result);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

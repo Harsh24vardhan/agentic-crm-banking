@@ -1,14 +1,18 @@
 import React, { useState } from "react";
 import { Award, Mail, Phone, MapPin, Briefcase, Settings, TrendingUp } from "lucide-react";
+import { getPreferences, savePreferences } from "../utils/preferences.js";
+import { useToast } from "../context/ToastContext.jsx";
 
 export default function UserProfile({ currentUser }) {
+  const { showSuccess } = useToast();
   const roleLabel = currentUser?.role === "admin" ? "System Administrator" : "Relationship Manager";
 
-  const [rmSettings, setRmSettings] = useState({
-    defaultChannel: "WhatsApp",
-    speed: "Normal",
-    notifications: true,
-    signature: `Best regards, ${currentUser?.name || "Relationship Manager"} - ${roleLabel}`
+  const [rmSettings, setRmSettings] = useState(() => {
+    const saved = getPreferences(currentUser?.id);
+    return {
+      ...saved,
+      signature: saved.signature || `Best regards, ${currentUser?.name || "Relationship Manager"} - ${roleLabel}`
+    };
   });
 
   const getInitials = (name) => {
@@ -35,6 +39,11 @@ export default function UserProfile({ currentUser }) {
 
   const handleSettingChange = (field, value) => {
     setRmSettings(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSavePreferences = () => {
+    savePreferences(currentUser?.id, rmSettings);
+    showSuccess("Preferences saved successfully.");
   };
 
   return (
@@ -183,10 +192,10 @@ export default function UserProfile({ currentUser }) {
             />
           </div>
 
-          <button 
+          <button
             className="btn btn-primary"
             style={{ width: "100%", background: "linear-gradient(135deg, var(--color-primary) 0%, #3b82f6 100%)", color: "#000", marginTop: "0.5rem" }}
-            onClick={() => alert("Settings saved successfully!")}
+            onClick={handleSavePreferences}
           >
             Save Preferences
           </button>

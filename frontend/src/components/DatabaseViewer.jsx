@@ -1,6 +1,7 @@
 import { API_BASE_URL } from "../config.js";
 import React, { useState, useEffect } from "react";
 import { mockCustomers, mockTransactions } from "../../../shared/mockDatabase.js";
+import { isValidName, isValidPhone } from "../../../shared/validators.js";
 import { Search, UserPlus, X } from "lucide-react";
 import { useToast } from "../context/ToastContext.jsx";
 
@@ -75,6 +76,14 @@ export default function DatabaseViewer({ setActiveTab, setInitialQuery }) {
   // Actions
   const handleAddCustomerSubmit = async (e) => {
     e.preventDefault();
+    if (!isValidName(addForm.name)) {
+      showError("Name can only contain letters, spaces, and ' . - characters — no numbers or symbols.");
+      return;
+    }
+    if (!isValidPhone(addForm.phone)) {
+      showError("Enter a valid Indian phone number, e.g. +91 98765 43210.");
+      return;
+    }
     const payload = {
       ...addForm,
       age: parseInt(addForm.age),
@@ -139,6 +148,14 @@ export default function DatabaseViewer({ setActiveTab, setInitialQuery }) {
 
   const handleEditCustomerSubmit = async (e) => {
     e.preventDefault();
+    if (!isValidName(editForm.name)) {
+      showError("Name can only contain letters, spaces, and ' . - characters — no numbers or symbols.");
+      return;
+    }
+    if (!isValidPhone(editForm.phone)) {
+      showError("Enter a valid Indian phone number, e.g. +91 98765 43210.");
+      return;
+    }
     const payload = {
       ...editForm,
       age: parseInt(editForm.age),

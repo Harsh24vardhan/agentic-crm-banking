@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { Send, RefreshCw, Terminal, Search, UserCheck, BrainCircuit, Wrench, Eye, Zap, ListChecks, WifiOff, MessageSquare, RotateCcw } from "lucide-react";
 import { runAgent } from "../agent/agentCore";
 import { useToast } from "../context/ToastContext.jsx";
+import { getPreferences, getSpeedMs } from "../utils/preferences.js";
 
 const MAX_HISTORY_TURNS = 12;
 
@@ -22,11 +23,13 @@ function buildTurnSummary(userQuery, result) {
   return `Query: "${userQuery}" -> found and scored ${result.leads.length} candidate(s) for ${result.productType}: ${leadList}.`;
 }
 
-export default function AgentConsole({ onLeadsGenerated, setTab, initialQuery, setInitialQuery }) {
+export default function AgentConsole({ onLeadsGenerated, setTab, initialQuery, setInitialQuery, currentUser }) {
   const { showSuccess, showError } = useToast();
   const [query, setQuery] = useState("");
   const [isRunning, setIsRunning] = useState(false);
-  const [speed, setSpeed] = useState(1500); // ms per step
+  // Defaults to whatever the RM saved in Preferences & Settings, not a
+  // hardcoded value — see UserProfile.jsx.
+  const [speed, setSpeed] = useState(() => getSpeedMs(getPreferences(currentUser?.id).speed));
   const [agentOutput, setAgentOutput] = useState(null);
   const [visibleSteps, setVisibleSteps] = useState([]);
   const [currentStepIdx, setCurrentStepIdx] = useState(-1);

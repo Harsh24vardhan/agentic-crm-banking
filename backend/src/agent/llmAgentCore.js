@@ -170,7 +170,18 @@ function sanitizeHistory(history) {
  * @returns {Promise<{success: boolean, steps: Array, leads: Array, productType: string, engine: string}>}
  */
 export async function runAgentLLM(query, history = []) {
-  const client = new Groq();
+  // maxRetries: 0 is deliberate, not an oversight. groq-sdk defaults to 2
+  // retries and, when the API returns a `retry-after`/`retry-after-ms`
+  // header, sleeps for however long the header says before each retry —
+  // observed directly during this project's own testing to be tens of
+  // *minutes* under a daily-quota 429, not seconds. That single await
+  // blocks this whole request, which is what actually made /api/agent feel
+  // "slow": not the model, but the SDK silently honoring an arbitrarily
+  // long server-suggested wait before we ever got a chance to fail over.
+  // We already have a better fallback (the deterministic engine) than
+  // "wait and try the same call again," so fail fast and let server.js's
+  // try/catch hand off immediately instead.
+  const client = new Groq({ maxRetries: 0, timeout: 30000 });
   const messages = [
     { role: "system", content: SYSTEM_PROMPT },
     ...sanitizeHistory(history),

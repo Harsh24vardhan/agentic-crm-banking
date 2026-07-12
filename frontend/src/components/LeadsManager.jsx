@@ -4,8 +4,9 @@ import { mockCustomers } from "../../../shared/mockDatabase.js";
 import { MessageSquare, Send, Clipboard, CheckCircle, HelpCircle, Mail, RefreshCw, ExternalLink } from "lucide-react";
 import { generate_personalized_message } from "../agent/tools";
 import { useToast } from "../context/ToastContext.jsx";
+import { getPreferences } from "../utils/preferences.js";
 
-export default function LeadsManager({ leads, activeProduct, setActiveTab, setInitialQuery }) {
+export default function LeadsManager({ leads, activeProduct, setActiveTab, setInitialQuery, currentUser }) {
   const { showSuccess, showError } = useToast();
   const [selectedLeadId, setSelectedLeadId] = useState(null);
   const [editableMsg, setEditableMsg] = useState("");
@@ -14,13 +15,15 @@ export default function LeadsManager({ leads, activeProduct, setActiveTab, setIn
   const [contactedStatus, setContactedStatus] = useState({}); // customerId -> boolean
   const [isDispatching, setIsDispatching] = useState(false);
   const [dispatchStep, setDispatchStep] = useState(0);
-  const [outreachChannel, setOutreachChannel] = useState("WhatsApp");
+  // Defaults to the RM's saved Preferences & Settings channel, not a
+  // hardcoded value — see UserProfile.jsx.
+  const [outreachChannel, setOutreachChannel] = useState(() => getPreferences(currentUser?.id).defaultChannel);
 
   // Set default selected lead when leads update
   useEffect(() => {
     if (leads && leads.length > 0) {
       setSelectedLeadId(leads[0].customerId);
-      setOutreachChannel("WhatsApp");
+      setOutreachChannel(getPreferences(currentUser?.id).defaultChannel);
     } else {
       setSelectedLeadId(null);
       setEditableMsg("");

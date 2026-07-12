@@ -130,15 +130,6 @@ export default function App() {
             setInitialQuery={setInitialQuery}
           />
         );
-      case "agent":
-        return (
-          <AgentConsole
-            onLeadsGenerated={handleLeadsGenerated}
-            setTab={setActiveTab}
-            initialQuery={initialQuery}
-            setInitialQuery={setInitialQuery}
-          />
-        );
       case "database":
         return (
           <DatabaseViewer
@@ -153,6 +144,7 @@ export default function App() {
             activeProduct={activeProduct}
             setActiveTab={setActiveTab}
             setInitialQuery={setInitialQuery}
+            currentUser={currentUser}
           />
         );
       case "profile":
@@ -182,7 +174,24 @@ export default function App() {
         theme={theme}
         toggleTheme={toggleTheme}
       />
-      <main className="main-content">{renderContent()}</main>
+      <main className="main-content">
+        {/* AgentConsole stays mounted across tab switches (hidden via CSS,
+            not unmounted) so a run in progress or its results survive
+            navigating away and back — a plain switch-based render would
+            destroy its local state on every tab change. */}
+        {!isAdmin && (
+          <div style={{ display: activeTab === "agent" ? "contents" : "none" }}>
+            <AgentConsole
+              onLeadsGenerated={handleLeadsGenerated}
+              setTab={setActiveTab}
+              initialQuery={initialQuery}
+              setInitialQuery={setInitialQuery}
+              currentUser={currentUser}
+            />
+          </div>
+        )}
+        {activeTab !== "agent" && renderContent()}
+      </main>
     </div>
   );
 }

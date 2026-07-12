@@ -84,7 +84,7 @@ Direct mapping against the assignment brief, so it's auditable at a glance.
 | Requirement | How it's satisfied |
 |---|---|
 | Clear task decomposition | Primary path: an LLM (Groq `openai/gpt-oss-120b`) dynamically plans and re-plans based on live tool results via real tool-use/function-calling — not a fixed script. Fallback path: a deterministic 5-step plan (list → analyze → score → draft → compile). Both log an explicit Thought/Action/Observation per step, rendered live in the Agent Console trace panel |
-| Effective tool/API usage | 4 composable agent tools, invocable either by an LLM tool-use loop or a deterministic pipeline, + a 14-route Express REST API + PostgreSQL — see [REST API Reference](#rest-api-reference) |
+| Effective tool/API usage | 4 composable agent tools, invocable either by an LLM tool-use loop or a deterministic pipeline, + a 15-route Express REST API + PostgreSQL — see [REST API Reference](#rest-api-reference) |
 | Structured reasoning and execution flow | See the [sequence diagrams](#agentic-reasoning--execution-flow) below — every step's Thought/Action/Observation is logged and replayed in the UI at adjustable speed, for both engines |
 | Proper state/context handling | Session state persisted in `localStorage`; agent trace state, leads hand-off from Agent Console → Leads Manager, and role-based routing all flow through explicit React state, not globals. Multi-turn conversation state (Tier 1 only) is a client-held, capped summary of prior turns threaded back through each request — see [Key Design Decision #15](#key-design-decisions) |
 | Modular and extensible design | Strict separation: `/agent` (reasoning + tools), `/components` (presentation), `/db` (persistence), `/context` (cross-cutting UI concerns) — see [Project Structure](#project-structure) |
@@ -382,7 +382,8 @@ Express server ([`backend/server.js`](backend/server.js)), all routes prefixed b
 | `POST` | `/api/agent` | Full natural-language query → agent run → ranked leads. Body: `{ query, history? }` — `history` (optional, Tier 1 only) is a capped array of `{role, content}` turn summaries for follow-up requests. LLM-driven if `GROQ_API_KEY` is set, deterministic otherwise; response includes `engine: "llm" \| "heuristic"` |
 | `POST` | `/api/auth/login` | Username/password authentication |
 | `GET` | `/api/rms` | List Relationship Managers (admin) |
-| `POST` | `/api/rms` | Create a new RM account (admin) |
+| `POST` | `/api/rms` | Create a new RM account (admin). Validated server-side via `shared/validators.js` — 400 with a per-field `errors` object on failure |
+| `DELETE` | `/api/rms/:id` | Remove an RM account (admin). Scoped to `role = 'rm'` — cannot delete the admin account even if its id is passed directly |
 | `GET` | `/api/logs` | In-memory ring buffer of recent request logs (ops/debugging) |
 
 ---
@@ -491,12 +492,20 @@ flowchart TD
 
 16. **The LLM tier writes outreach messages itself; the fallback tiers still use templates — on purpose, not as an oversight.** Originally, all three tiers called the same `generate_personalized_message` tool, which always ran the same `shared/heuristics.js` template selector — meaning the *same customer* produced byte-identical copy whether the "intelligent" LLM tier or the deterministic fallback served the request. That's a real gap: an interviewer asking "does the LLM actually write the message, or just decide who gets one?" deserved an honest "just decide," which wasn't good enough. Fixed by splitting the contract (see [Tool Design](#tool-design--interface-definitions) #4): Tier 1 now calls `submit_personalized_message(customerId, productType, channel, message)`, where `message` is a required argument **the model composes itself** from the customer notes, transaction signals, and score justification already in its context — the tool only validates and records it. Tier 2/3 keep calling the original `generate_personalized_message`, which still drafts from templates. This is deliberately *not* unified: a fallback tier's entire value is being predictable, instant, and free — template output is a feature there, not a limitation to hide.
 
+17. **The Agent Console survives tab navigation by staying mounted, not by lifting its state.** Switching tabs used to fully unmount `AgentConsole` (a plain `switch` in `App.jsx`'s render), which destroyed its local state — a completed run, or one still mid-playback, vanished the moment you clicked away and had to be re-run. The fix is a CSS visibility toggle, not a state-lifting refactor: for non-admin users, `AgentConsole` is always rendered inside a wrapper that's `display: contents` when active and `display: none` otherwise, so the component instance (and every `useState` in it — query, trace, leads, conversation history) is preserved across navigation instead of being torn down and rebuilt. Chosen over lifting all 8 pieces of AgentConsole's state up into `App.jsx`: that would have worked too, but turns every other tab's render into prop-drilling for state only one tab uses, for a component that was already self-contained. A one-line render change had a much smaller blast radius than restructuring `App.jsx`'s state ownership.
+
+18. **RM account management got the same "never trust client-only checks" treatment as everything else, plus a delete path admin never had.** Two gaps surfaced together: the RM-creation form accepted anything (a name of `"123456"` was valid), and there was no way to remove an RM once created. Fixed both: `shared/validators.js` is a new pure module (name/username/password/email/phone rules) in the same spirit as `heuristics.js`/`queryParser.js` — imported by the React form for instant inline feedback *and* by the Express route for real enforcement, so the two can't drift apart. `DELETE /api/rms/:id` was added and deliberately scoped to `role = 'rm'` in the SQL/mock-array filter itself, not just in the UI — passing the admin account's own id to this route is a no-op failure, not a lockout risk. The customer Add/Edit forms in `DatabaseViewer.jsx` had the identical name-validation gap and got the same fix reusing the same module, since it was the same bug class in a second location.
+
+19. **The Groq client now fails fast instead of silently retrying for however long the API asks it to wait.** Root-caused, not guessed at: `groq-sdk` defaults to `maxRetries: 2`, and its retry logic (`client.mjs`) honors a `retry-after`/`retry-after-ms` response header verbatim with no upper bound — on a daily-quota 429 (this project's own testing hit exactly this), Groq's response suggests waiting tens of *minutes*, and the SDK will `await sleep()` for that entire duration before even attempting a retry. That single await blocked the whole `/api/agent` request, which is what actually made the endpoint "slow" under load — not model latency. Fixed with `new Groq({ maxRetries: 0, timeout: 30000 })`: since `server.js` already has a proven, faster fallback (the deterministic engine) for exactly this situation, there's no reason to wait and retry the same degraded call first. Confirmed directly: the same rate-limited account that previously implied a 30-48 minute wait now throws immediately, measured in the low hundreds of milliseconds.
+
+20. **Preferences & Settings now actually persists and does something, instead of an `alert()`.** The Save button called `alert("Settings saved successfully!")` — a hardcoded success message with no backing state at all; every setting reset the moment you left the page. Fixed with `frontend/src/utils/preferences.js`, a small localStorage-backed store keyed per user id (so a shared branch machine doesn't leak one RM's settings into another's session). More importantly, the settings now do something: `AgentConsole`'s playback speed and `LeadsManager`'s default outreach channel both initialize from the saved preference instead of a hardcoded value, closing the gap where the page's own copy ("Customize your AI console behavior and dispatch defaults") was aspirational rather than true.
+
 ---
 
 ## Trade-offs & Limitations
 
 - **LLM path latency is real and variable.** Because the model plans dynamically — deciding how many candidates to explore, whether to check transaction history, how many to score — a single request can take anywhere from ~20 seconds to a few minutes depending on how many tool-call round-trips it chooses to make. This is a genuine cost of *real* dynamic planning versus a fixed-length script: the fixed deterministic pipeline is near-instant precisely because it doesn't reason about how much work to do. `reasoning_effort: "low"` is set on the Groq call to cut this down (the heavy lifting — scoring math, message templates — happens in our own deterministic tools, not the model, so deep reasoning isn't needed for orchestration), but multi-turn tool loops are inherently slower than a single call.
-- **Groq's free tier has real rate limits, on two separate axes, both confirmed directly (not hypothetical).** 8,000 tokens/minute is documented; during this project's own testing, a **200,000 tokens/day** organization-wide cap was also hit and confirmed from the API's own error response (`"Limit 200000, Used 195457"`), with a short suggested retry window rather than a calendar-day reset. A multi-turn tool-use conversation resends the full message history each turn, and conversation `history` (Key Design Decision #15) adds a small amount more per follow-up — both compound token usage, which eats into whichever of the two limits is tighter at the time. Hitting either isn't a failure mode here: `POST /api/agent` catches the error and falls back to the deterministic engine (see [Key Design Decisions](#key-design-decisions) #1), so the RM still gets a working result, just from the fallback path.
+- **Groq's free tier has real rate limits, on two separate axes, both confirmed directly (not hypothetical).** 8,000 tokens/minute is documented; during this project's own testing, a **200,000 tokens/day** organization-wide cap was also hit and confirmed from the API's own error response (`"Limit 200000, Used 195457"`), with a rolling window that clears over roughly an hour rather than a fixed calendar-day reset. A multi-turn tool-use conversation resends the full message history each turn, and conversation `history` (Key Design Decision #15) adds a small amount more per follow-up — both compound token usage, which eats into whichever of the two limits is tighter at the time. Hitting either isn't a failure mode here: `POST /api/agent` catches the error and falls back to the deterministic engine (see [Key Design Decisions](#key-design-decisions) #1), so the RM still gets a working result, just from the fallback path — and as of Key Design Decision #19, that fallback now kicks in within milliseconds of the 429 instead of after the SDK's own multi-minute retry wait.
 - **The model doesn't always pick optimal tool arguments on the first try.** In one observed run, the model initially guessed several unrealistic numeric thresholds (`minBalance: 500000`, etc.) for a "high-value" request before self-correcting to use the `segment` field — costing several wasted tool calls. Tightened the tool description and system prompt to explicitly steer qualitative terms toward the `segment` enum instead of invented numbers, which fixed it in testing, but it's a reminder that LLM tool-use quality is sensitive to prompt/schema wording, not just the underlying model's capability.
 - **Deterministic-path NL parsing is regex/keyword matching, not an LLM.** This only applies to Tier 2 (the fallback) — it guarantees zero API latency, zero cost, and 100% uptime when it's the active path, but it requires roughly standard phrasing (recognizes "balance", "credit score", "loan", "travel", "wealth", etc.) and won't handle arbitrary paraphrasing the way the LLM tier does.
 - **LLM-authored messages (Tier 1) are generated text, with the usual generation risk that comes with that.** Because `submit_personalized_message` now takes model-written copy instead of validated template output, Tier 1 messages can in principle drift — an invented specific or a phrasing an RM wouldn't approve — in a way a fixed template structurally cannot. The system prompt constrains tone, length, and requires grounding in a real customer detail, and the trace log shows the exact text that was submitted for review, but nothing enforces the constraints at the code level the way a template does. Treat Tier 1 output as an RM-reviewed draft, not an auto-send. Tier 2/3 output has no such caveat — same input always produces the same, previously-reviewed copy.
@@ -536,10 +545,12 @@ Assingment/
 │   ├── heuristics.test.js         # node:test suite for the scoring model
 │   ├── queryParser.js             # NL → {productType, filters} for the deterministic tier
 │   ├── queryParser.test.js        # node:test suite, incl. the Key Design Decision #11 regression
+│   ├── validators.js              # Name/username/password/email/phone rules, used client + server
+│   ├── validators.test.js         # node:test suite for the validation rules
 │   └── package.json               # {"type": "module"} so both ESM apps resolve it cleanly
 │
 ├── backend/
-│   ├── server.js                  # Express app, 14 REST routes
+│   ├── server.js                  # Express app, 15 REST routes
 │   ├── src/
 │   │   ├── agent/
 │   │   │   ├── llmAgentCore.js    # Tier 1: LLM-driven tool-use loop (Groq)
@@ -554,10 +565,12 @@ Assingment/
 ├── frontend/
 │   ├── src/
 │   │   ├── agent/                 # Tier 3: client-side offline fallback (mirrors tools.js/agentCore.js)
+│   │   ├── utils/
+│   │   │   └── preferences.js     # localStorage-backed RM console settings (per-user scoped)
 │   │   ├── components/
 │   │   │   ├── Login.jsx, Sidebar.jsx, BrandLogo.jsx
 │   │   │   ├── HomePage.jsx, DashboardMetrics.jsx
-│   │   │   ├── AgentConsole.jsx        # Trace playback UI (renders either engine's output)
+│   │   │   ├── AgentConsole.jsx        # Trace playback UI (renders either engine's output; stays mounted across tab switches)
 │   │   │   ├── LeadsManager.jsx        # Scored leads + dispatch modal
 │   │   │   ├── DatabaseViewer.jsx      # CRM customer/transaction CRUD
 │   │   │   ├── RmManager.jsx           # Admin: RM directory + creation
@@ -616,7 +629,7 @@ npm run dev     # http://localhost:5173
 npm test        # from the repo root
 ```
 
-Runs the `node:test` suite (`shared/heuristics.test.js`, `shared/queryParser.test.js`) covering the conversion-scoring model and the NL query parser — including a regression test for the query-parser bug documented in [Key Design Decision #11](#key-design-decisions). No test-framework dependency; uses Node's built-in runner.
+Runs the `node:test` suite (`shared/heuristics.test.js`, `shared/queryParser.test.js`, `shared/validators.test.js` — 46 tests total) covering the conversion-scoring model, the NL query parser, and the RM/customer input-validation rules — including a regression test for the query-parser bug documented in [Key Design Decision #11](#key-design-decisions). No test-framework dependency; uses Node's built-in runner.
 
 ---
 

@@ -530,6 +530,27 @@ export async function addRmDb(rmData) {
   }
 }
 
+// 10. Delete an RM user (never admin — scoped to role='rm' so this route
+// can't be used to lock out the admin account, accidentally or otherwise)
+export async function deleteRmDb(id) {
+  if (!usePostgres) {
+    const index = mockUsers.findIndex(u => u.id === id && u.role === "rm");
+    if (index === -1) return { success: false, error: "Relationship Manager not found." };
+    const [removed] = mockUsers.splice(index, 1);
+    mockPasswordHashes.delete(removed.username);
+    return { success: true, data: { id: removed.id, name: removed.name } };
+  }
+
+  try {
+    const { rows } = await pool.query("DELETE FROM users WHERE id = $1 AND role = 'rm' RETURNING id, name", [id]);
+    if (rows.length === 0) return { success: false, error: "Relationship Manager not found." };
+    return { success: true, data: { id: rows[0].id, name: rows[0].name } };
+  } catch (error) {
+    console.error("Postgres Delete RM Error:", error);
+    return { success: false, error: error.message };
+  }
+}
+
 export function getDbStatus() {
   return usePostgres ? "PostgreSQL" : "Mock Array Fallback";
 }
